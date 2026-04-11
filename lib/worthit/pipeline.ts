@@ -1253,7 +1253,7 @@ export async function analyzeWithClaude(
   const tMain = performance.now();
   const msg = await client.messages.create({
     model,
-    max_tokens: 8192,
+    max_tokens: 4096,
     system: WORTHIT_SYSTEM_PROMPT,
     messages: [{ role: "user", content: userContent }],
   });

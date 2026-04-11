@@ -7,6 +7,7 @@ import { SearchForm } from "@/components/worthit/SearchForm";
 import { SiteFooter } from "@/components/worthit/SiteFooter";
 import { WorthitResultView } from "@/components/worthit/WorthitResultView";
 import { normalizeVerdict } from "@/components/worthit/verdict-styles";
+import { DisambiguationPanel } from "@/components/worthit/DisambiguationPanel";
 import { useWorthitSearch } from "@/hooks/useWorthitSearch";
 
 const TICKER = [
@@ -428,6 +429,8 @@ export default function Home() {
     query,
     setQuery,
     loading,
+    checking,
+    disambiguation,
     loadMsgIndex,
     loadingMessage,
     loadingStepsTotal,
@@ -435,11 +438,14 @@ export default function Home() {
     result,
     amazonUrl,
     submit,
+    selectSuggestion,
+    dismissSuggestions,
     clearError,
     reset,
   } = useWorthitSearch();
   const verdict = result ? normalizeVerdict(result.verdict) : null;
-  const hasResult = result && verdict !== null && !loading;
+  const busy = loading || checking;
+  const hasResult = result && verdict !== null && !loading && !disambiguation;
 
   const handleSelect = useCallback(
     (q: string) => {
@@ -452,7 +458,7 @@ export default function Home() {
   const runSubmit = useCallback(() => void submit(), [submit]);
 
   useEffect(() => {
-    if (hasResult || loading) return;
+    if (hasResult || loading || checking) return;
     const els = document.querySelectorAll(".reveal");
     if (!els.length) return;
     const obs = new IntersectionObserver(
@@ -465,7 +471,7 @@ export default function Home() {
     );
     els.forEach((el) => obs.observe(el));
     return () => obs.disconnect();
-  }, [hasResult, loading]);
+  }, [hasResult, loading, checking]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a]">
@@ -536,7 +542,7 @@ export default function Home() {
                   query={query}
                   onQueryChange={setQuery}
                   onSubmit={runSubmit}
-                  loading={loading}
+                  loading={busy}
                   onSuggestion={(q) => handleSelect(q)}
                 />
               </div>
@@ -583,7 +589,7 @@ export default function Home() {
                   query={query}
                   onQueryChange={setQuery}
                   onSubmit={runSubmit}
-                  loading={loading}
+                  loading={busy}
                   onSuggestion={(q) => handleSelect(q)}
                 />
               </div>
@@ -593,12 +599,26 @@ export default function Home() {
       </div>
 
       <div className="mx-auto max-w-2xl px-4 pb-10 sm:px-6">
-        {loading && <LoadingPanel message={loadingMessage} step={loadMsgIndex} total={loadingStepsTotal} />}
+        {(checking || loading) && !disambiguation && (
+          <LoadingPanel
+            message={checking ? "Ürün kontrol ediliyor..." : loadingMessage}
+            step={checking ? 0 : loadMsgIndex}
+            total={loadingStepsTotal}
+          />
+        )}
+        {disambiguation && !loading && (
+          <DisambiguationPanel
+            question={disambiguation.question}
+            suggestions={disambiguation.suggestions}
+            onSelect={selectSuggestion}
+            onDismiss={dismissSuggestions}
+          />
+        )}
         {error && <ErrorAlert message={error} onDismiss={clearError} />}
         {hasResult && <WorthitResultView result={result} amazonUrl={amazonUrl} verdict={verdict} />}
       </div>
 
-      {!hasResult && !loading && (
+      {!hasResult && !loading && !checking && !disambiguation && (
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
           <div className="border-t border-white/6 pb-16 pt-12">
             <div className="mb-8">
