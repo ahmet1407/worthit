@@ -259,6 +259,118 @@ function listingProbablyAccessoryMismatch(userInput: string, s: ScrapedAmazonPay
   return accessoryCue && !mainApplianceCue && words <= 5;
 }
 
+/** Amazon başlığı veya kullanıcı sorgusu — web araştırması anchor’u */
+function shortenResearchAnchor(userQuery: string, amazonTitle: string): string {
+  const t = amazonTitle
+    .replace(/[_|]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const q = simplifyProductQuery(userQuery) || userQuery.trim();
+  const raw = t.length >= 14 ? t : q;
+  return raw.slice(0, 110).trim();
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "bilinmeyen";
+  }
+}
+
+function isAmazonUrl(u: string): boolean {
+  try {
+    return /amazon\./i.test(new URL(u).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Tavily: Amazon dışı kısa pasajlar (paralel). Başarısız sorgular sessizce yutulur.
+ * Güven ve kronik sorun için ek bağlam; istek başına ~4–5 Tavily çağrısı.
+ */
+async function fetchSupplementalResearch(
+  userQuery: string,
+  scraped: ScrapedAmazonPayload
+): Promise<{ block: string; urls: string[] }> {
+  if (!process.env.TAVILY_API_KEY) return { block: "", urls: [] };
+
+  const anchor = shortenResearchAnchor(userQuery, scraped.title);
+  if (anchor.length < 3) return { block: "", urls: [] };
+
+  const strategies: Record<string, unknown>[] = [
+    { query: `${anchor} sorun şikayet`, include_domains: ["sikayetvar.com"], max_results: 6 },
+    { query: `${anchor} kullanıcı deneyimi sorun`, include_domains: ["sikayetvar.com"], max_results: 4 },
+    { query: `${anchor} problems OR issues OR long term owner reddit`, max_results: 6 },
+    {
+      query: `${anchor} review lab test site:rtings.com OR site:notebookcheck.net OR site:vacuumwars.com OR site:which.co.uk`,
+      max_results: 5,
+    },
+    {
+      query: `${anchor} sorun tavsiye site:technopat.net OR site:donanimhaber.com`,
+      max_results: 5,
+    },
+  ];
+
+  const settled = await Promise.allSettled(
+    strategies.map(async (body) => {
+      try {
+        return await tavilySearchBody(body);
+      } catch {
+        return { results: [] as TavilyHit[] };
+      }
+    })
+  );
+
+  type Tagged = { hit: TavilyHit; qIndex: number };
+  const tagged: Tagged[] = [];
+  settled.forEach((r, qIndex) => {
+    if (r.status !== "fulfilled") return;
+    for (const hit of r.value.results ?? []) {
+      const u = hit.url?.trim();
+      if (!u || !/^https?:\/\//i.test(u) || isAmazonUrl(u)) continue;
+      tagged.push({ hit: { ...hit, url: u }, qIndex });
+    }
+  });
+
+  tagged.sort((a, b) => {
+    if (a.qIndex !== b.qIndex) return a.qIndex - b.qIndex;
+    return (Number(b.hit.score) || 0) - (Number(a.hit.score) || 0);
+  });
+
+  const seen = new Set<string>();
+  const chunks: string[] = [];
+  const urls: string[] = [];
+  let used = 0;
+  const maxTotal = 5200;
+  const maxSnip = 420;
+
+  for (const { hit } of tagged) {
+    const u = hit.url!;
+    if (seen.has(u)) continue;
+    seen.add(u);
+
+    const host = hostnameOf(u);
+    const title = (hit.title ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
+    const snippet = (hit.content ?? "").replace(/\s+/g, " ").trim().slice(0, maxSnip);
+    if (!title && !snippet) continue;
+
+    const piece = `### ${host}\nURL: ${u}\nBaşlık: ${title || "—"}\nÖzet: ${snippet || "—"}\n\n`;
+    if (used + piece.length > maxTotal) break;
+    chunks.push(piece);
+    urls.push(u);
+    used += piece.length;
+    if (chunks.length >= 12) break;
+  }
+
+  if (chunks.length === 0) return { block: "", urls: [] };
+
+  const block =
+    `(${chunks.length} sayfa özeti, yalnızca aşağıdaki metne dayan)\n\n` + chunks.join("");
+  return { block, urls };
+}
+
 /** Tavily + yapıştırılan URL/ASIN + bölge varyantları — sırayla dene */
 export async function resolveAmazonProductPageUrls(userInput: string): Promise<string[]> {
   const raw = userInput.trim();
@@ -583,8 +695,24 @@ export async function scrapeAmazonForWorthit(productUrl: string): Promise<Scrape
   };
 }
 
-function buildUserMessage(productName: string, s: ScrapedAmazonPayload): string {
+function buildUserMessage(
+  productName: string,
+  s: ScrapedAmazonPayload,
+  supplementalBlock?: string
+): string {
   const head = s.scrapingNote ? `${s.scrapingNote}\n\n` : "";
+  const extra =
+    supplementalBlock && supplementalBlock.trim().length > 0
+      ? `
+
+---
+Tavily ile çekilen ek web pasajları (Amazon dışı; arama motoru özetleri, kısaltılmış)
+Kullandığın her iddia için data_integrity.sources_analyzed içinde tam URL yaz. Özette olmayan ayrıntı ekleme.
+---
+${supplementalBlock.trim()}
+---`
+      : "";
+
   return `${head}Ürün: ${productName}
 
 Amazon'dan çekilen veriler:
@@ -598,7 +726,7 @@ Bu ürünü analiz et ve yukarıdaki JSON formatında yanıt ver.
 Ek bağlam (Firecrawl markdown özeti, URL: ${s.sourceUrl}):
 ---
 ${s.markdownExcerpt}
----`;
+---${extra}`;
 }
 
 function extractJsonFromClaudeText(text: string): WorthitReport {
@@ -698,7 +826,8 @@ function normalizeWorthitReport(raw: Partial<WorthitReport>): WorthitReport {
 
 export async function analyzeWithClaude(
   productName: string,
-  scraped: ScrapedAmazonPayload
+  scraped: ScrapedAmazonPayload,
+  supplementalBlock?: string
 ): Promise<WorthitReport> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY eksik");
@@ -710,7 +839,7 @@ export async function analyzeWithClaude(
   const model =
     fromEnv && !RETIRED.test(fromEnv) ? fromEnv : fallback;
   const client = new Anthropic({ apiKey: key });
-  const userContent = buildUserMessage(productName, scraped);
+  const userContent = buildUserMessage(productName, scraped, supplementalBlock);
 
   const msg = await client.messages.create({
     model,
@@ -743,7 +872,8 @@ export async function runWorthitPipeline(productName: string): Promise<{
         );
         continue;
       }
-      const report = await analyzeWithClaude(trimmed, scraped);
+      const { block: supplementalBlock } = await fetchSupplementalResearch(trimmed, scraped);
+      const report = await analyzeWithClaude(trimmed, scraped, supplementalBlock || undefined);
       return { amazonUrl, report };
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e));
