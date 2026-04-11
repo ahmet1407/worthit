@@ -10,6 +10,7 @@ const MVP_CONTEXT = `
 ---
 OPERASYONEL BAĞLAM (Backend MVP — şu anki üretim kodu)
 Kullanıcı mesajında her zaman: ürün adı, Amazon başlık/kategori/puan/yorum özeti, Firecrawl ile çekilmiş Amazon markdown özeti bulunur.
+Mesajın en üstünde "NOT (Tavily — genel web araması" ile başlayan bir paragraf varsa: bu Amazon dışı kısa sinyal özetidir; gerçek listeyle çelişirse Amazon verisini önceliklendir ve çelişkiyi verdict_reason / confidence ile açıkla.
 Mesajda "Tavily ile çekilen ek web pasajları" bölümü varsa: bunlar Amazon dışı sitelerden (ör. Şikayetvar, Reddit, RTINGS/Notebookcheck, TR forum) gelen kısaltılmış arama özetleridir; master prompttaki kaynak ağırlıklarına göre değerlendir. Yalnızca bu pasajlarda veya Amazon metninde açıkça geçen iddiaları kullan; rakam, test sonucu veya siteye özel iddia uydurma. Ek pasajları kullandıysan data_integrity.sources_analyzed içinde tam URL’leri listele; total_sources_count ile tutarlı olsun. Pasaj yoksa veya çok zayıfsa confidence düşük kalmalıdır.
 fake_review_signal, last_90_days, kronik sorun alanlarını yalnızca iletilen metinden çıkarılabildiği ölçüde doldur.
 

@@ -181,6 +181,91 @@ async function tavilySearchBody(body: Record<string, unknown>): Promise<{ result
   return (await res.json()) as { results?: TavilyHit[] };
 }
 
+/**
+ * Amazon’a bakmadan (Tavily): genel web özetlerinde “henüz yok / söylenti” vs “satışta” sinyali.
+ * Sabit ürün listesi yok. Dönüş: yalnızca Claude’a eklenecek kısa NOT; analizi durdurmaz.
+ */
+const EXISTENCE_NEG = [
+  /\bnot yet released\b/i,
+  /\bhas(n't| not) been (released|announced)\b/i,
+  /\b(has not|hasn't) launched\b/i,
+  /\bno official (announcement|confirmation)\b/i,
+  /\brumor(ed)?\b/i,
+  /\brumou?red\b/i,
+  /\bexpected to (launch|debut)\b/i,
+  /\bcoming (in|this) (q[1-4]|spring|summer|fall|winter)\b/i,
+  /\b(vaporware|speculation only|fake product)\b/i,
+  /\bhenüz (duyurulmadı|çıkmadı|satışa çıkmadı|yok|satılmıyor)\b/i,
+  /\bresmi duyuru yok\b/i,
+  /\b(sadece söylenti|spekülasyon|gerçek değil)\b/i,
+];
+
+const EXISTENCE_POS = [
+  /\bavailable (now|for purchase|today)\b/i,
+  /\bbuy (now|today)\b/i,
+  /\border now\b/i,
+  /\bin stock\b/i,
+  /\b(out now|now on sale)\b/i,
+  /\bsatışta\b/i,
+  /\bsatın al\b/i,
+  /\bsipariş (ver|et)\b/i,
+  /\b(from|at) (apple|samsung|google|amazon)\.(com|com\.tr)\b/i,
+  /\b(released|launched)\b.*\b20\d{2}\b/i,
+];
+
+async function tavilyWebExistenceHints(productName: string): Promise<string | null> {
+  if (!process.env.TAVILY_API_KEY) return null;
+  const anchor = (simplifyProductQuery(productName) || productName.trim()).slice(0, 96).trim();
+  if (anchor.length < 3) return null;
+
+  let blob = "";
+  try {
+    const [r1, r2] = await Promise.allSettled([
+      tavilySearchBody({
+        query: `"${anchor}" release OR announced OR available OR launch`,
+        search_depth: "basic",
+        max_results: 8,
+      }),
+      tavilySearchBody({
+        query: `"${anchor}" buy OR order OR price OR review`,
+        search_depth: "basic",
+        max_results: 8,
+      }),
+    ]);
+    const chunks: string[] = [];
+    for (const r of [r1, r2]) {
+      if (r.status !== "fulfilled") continue;
+      for (const hit of r.value.results ?? []) {
+        chunks.push(`${hit.title ?? ""} ${(hit.content ?? "").slice(0, 450)}`);
+      }
+    }
+    blob = chunks.join(" ").toLowerCase();
+  } catch {
+    return null;
+  }
+
+  if (blob.length < 100) return null;
+
+  let neg = 0;
+  let pos = 0;
+  for (const re of EXISTENCE_NEG) {
+    if (re.test(blob)) neg++;
+  }
+  for (const re of EXISTENCE_POS) {
+    if (re.test(blob)) pos++;
+  }
+
+  const strongUnlikely = neg >= 3 && pos <= 1;
+  const mediumUnlikely = neg >= 2 && pos === 0 && blob.length > 320;
+  if (!strongUnlikely && !mediumUnlikely) return null;
+
+  return (
+    "NOT (Tavily — genel web araması, Amazon değil): Özet metinlerde ‘henüz çıkmadı / duyurulmadı / söylenti’ vb. işaretler baskın; güçlü ‘satışta / sipariş / resmi mağaza’ sinyali az. " +
+    "Aşağıdaki Amazon listesi gerçek ve satın alınabilir görünüyorsa listeyi esas al; çelişki varsa verdict_reason’da açıkla, confidence düşür, gerekirse SKIP veya INSUFFICIENT_DATA. " +
+    "Bu NOT’ta olmayan teknik detay uydurma."
+  );
+}
+
 /** Kullanıcı muhtemelen ana cihaz istiyor (aksesuar / yedek parça anahtar kelimesi yok) */
 function userLikelyWantsMainAppliance(userInput: string): boolean {
   const q = userInput.toLowerCase();
@@ -367,18 +452,6 @@ function listingProbablyAccessoryMismatch(userInput: string, s: ScrapedAmazonPay
     return accessoryCue && !mainDeviceCue;
   }
   return accessoryCue && !mainDeviceCue && words <= 6;
-}
-
-/** Henüz resmi satışı olmayan / spekülatif model — pipeline erken çıkar (Claude’a sorma) */
-function detectUnavailableProduct(userInput: string): string | null {
-  const q = userInput.toLowerCase();
-  if (/\bgalaxy\s*s26\b/i.test(q)) {
-    return "Samsung Galaxy S26 henüz duyurulmadı / satışta değil. Galaxy S25 veya S24 serisi ile dene.";
-  }
-  if (/\bpixel\s*10\b/i.test(q)) {
-    return "Google Pixel 10 henüz satışta değil. Pixel 9 veya Pixel 8 serisi ile dene.";
-  }
-  return null;
 }
 
 /** Amazon başlığı veya kullanıcı sorgusu — web araştırması anchor’u */
@@ -852,9 +925,11 @@ export async function scrapeAmazonForWorthit(productUrl: string): Promise<Scrape
 function buildUserMessage(
   productName: string,
   s: ScrapedAmazonPayload,
-  supplementalBlock?: string
+  supplementalBlock?: string,
+  webExistenceNote?: string
 ): string {
-  const head = s.scrapingNote ? `${s.scrapingNote}\n\n` : "";
+  const pre = webExistenceNote?.trim() ? `${webExistenceNote.trim()}\n\n` : "";
+  const head = `${pre}${s.scrapingNote ? `${s.scrapingNote}\n\n` : ""}`;
   const extra =
     supplementalBlock && supplementalBlock.trim().length > 0
       ? `
@@ -981,7 +1056,8 @@ function normalizeWorthitReport(raw: Partial<WorthitReport>): WorthitReport {
 export async function analyzeWithClaude(
   productName: string,
   scraped: ScrapedAmazonPayload,
-  supplementalBlock?: string
+  supplementalBlock?: string,
+  webExistenceNote?: string
 ): Promise<WorthitReport> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY eksik");
@@ -993,7 +1069,7 @@ export async function analyzeWithClaude(
   const model =
     fromEnv && !RETIRED.test(fromEnv) ? fromEnv : fallback;
   const client = new Anthropic({ apiKey: key });
-  const userContent = buildUserMessage(productName, scraped, supplementalBlock);
+  const userContent = buildUserMessage(productName, scraped, supplementalBlock, webExistenceNote);
 
   const msg = await client.messages.create({
     model,
@@ -1014,10 +1090,10 @@ export async function runWorthitPipeline(productName: string): Promise<{
   const trimmed = productName.trim();
   if (!trimmed) throw new Error("Ürün adı gerekli.");
 
-  const unavailableMsg = detectUnavailableProduct(trimmed);
-  if (unavailableMsg) throw new Error(unavailableMsg);
-
-  const urls = await resolveAmazonProductPageUrls(trimmed);
+  const [urls, webExistenceNote] = await Promise.all([
+    resolveAmazonProductPageUrls(trimmed),
+    tavilyWebExistenceHints(trimmed),
+  ]);
   const errors: string[] = [];
 
   for (const amazonUrl of urls) {
@@ -1055,7 +1131,8 @@ export async function runWorthitPipeline(productName: string): Promise<{
       const report = await analyzeWithClaude(
         trimmed,
         scraped,
-        supplementalRes.block || undefined
+        supplementalRes.block || undefined,
+        webExistenceNote ?? undefined
       );
       return { amazonUrl, report };
     } catch (e) {
