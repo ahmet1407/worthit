@@ -18,23 +18,25 @@ const TICKER = [
   { name: "Garmin Fenix 8", v: "AL", s: 90 },
   { name: "Xiaomi Watch S3", v: "BEKLE", s: 64 },
   { name: "Roomba j7+", v: "BEKLE", s: 61 },
+  { name: "Nespresso Vertuo", v: "AL", s: 79 },
+  { name: "Oral-B iO Series 9", v: "AL", s: 86 },
 ] as const;
 
-const VC: Record<string, string> = { AL: "#16a34a", BEKLE: "#C05A1A", ALMA: "#C0281A" };
+const VC: Record<string, string> = { AL: "#c8f135", BEKLE: "#ffd93d", ALMA: "#ff6b6b" };
 
 function TickerBar() {
   const items = [...TICKER, ...TICKER];
   return (
-    <div className="overflow-hidden border-b border-[#E8E8E4] bg-[#F3F3F0]/60 py-2.5">
+    <div className="overflow-hidden border-b border-white/5 bg-white/2 py-2.5">
       <div className="ticker-track flex gap-10 whitespace-nowrap" style={{ width: "max-content" }}>
         {items.map((it, i) => (
           <span key={i} className="inline-flex items-center gap-2.5 text-xs">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: VC[it.v] ?? "#000" }} />
-            <span className="font-medium text-[#4A4A4A]">{it.name}</span>
-            <span className="text-[10px] font-bold" style={{ color: VC[it.v] }}>
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: VC[it.v] ?? "#fff" }} />
+            <span className="font-medium text-white/50">{it.name}</span>
+            <span className="text-[10px] font-black" style={{ color: VC[it.v] }}>
               {it.v}
             </span>
-            <span className="text-[#9A9A9A]">{it.s}/100</span>
+            <span className="text-white/20">{it.s}/100</span>
           </span>
         ))}
       </div>
@@ -63,24 +65,24 @@ const TRENDING: TrendingItem[] = [
 function TrendingPills({ onSelect }: { onSelect: (q: string) => void }) {
   return (
     <div className="flex flex-wrap items-center justify-center gap-2">
-      <span className="mr-1 text-xs font-medium text-[#9A9A9A]">🔥 Trend</span>
+      <span className="mr-1 text-xs font-medium text-white/25">🔥 Trend</span>
       {TRENDING.map((t) => (
         <button
           key={t.q}
           type="button"
           onClick={() => onSelect(t.q)}
-          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-all hover:-translate-y-0.5 hover:shadow-md ${
+          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(0,0,0,0.3)] ${
             t.risk
-              ? "border-red-200 bg-red-50 text-red-700 hover:border-[#0D0D0D] hover:bg-[#0D0D0D] hover:text-white"
+              ? "border-[#ff6b6b]/25 bg-[#ff6b6b]/8 text-[#ff6b6b]/70 hover:bg-[#ff6b6b]/15"
               : t.isnew
-                ? "border-blue-200 bg-blue-50 text-blue-700 hover:border-[#0D0D0D] hover:bg-[#0D0D0D] hover:text-white"
+                ? "border-blue-500/25 bg-blue-500/8 text-blue-400/80 hover:bg-blue-500/15"
                 : t.hot
-                  ? "border-orange-200 bg-orange-50 text-orange-700 hover:border-[#0D0D0D] hover:bg-[#0D0D0D] hover:text-white"
-                  : "border-[#E8E8E4] bg-white text-[#4A4A4A] hover:border-[#0D0D0D] hover:bg-[#0D0D0D] hover:text-white"
+                  ? "border-orange-500/25 bg-orange-500/8 text-orange-400/80 hover:bg-orange-500/15"
+                  : "border-white/10 bg-white/4 text-white/50 hover:bg-white/10 hover:text-white/80"
           }`}
         >
           <span>{t.label}</span>
-          <span className="text-[10px] opacity-50">{t.sub}</span>
+          <span className="text-[10px] opacity-40">{t.sub}</span>
         </button>
       ))}
     </div>
@@ -93,8 +95,8 @@ const EXAMPLES = [
     cat: "🧹 Dikey Süpürge",
     verdict: "AL",
     score: 91,
-    accent: "linear-gradient(90deg,#16a34a,#4ade80)",
-    scoreColor: "#16a34a",
+    accent: "linear-gradient(90deg,#16a34a,#c8f135)",
+    scoreColor: "#c8f135",
     sat: 91,
     risk: 12,
     val: 81,
@@ -111,8 +113,8 @@ const EXAMPLES = [
     cat: "🤖 Robot Süpürge",
     verdict: "BEKLE",
     score: 64,
-    accent: "linear-gradient(90deg,#ea580c,#fb923c)",
-    scoreColor: "#C05A1A",
+    accent: "linear-gradient(90deg,#d97706,#ffd93d)",
+    scoreColor: "#ffd93d",
     sat: 72,
     risk: 41,
     val: 58,
@@ -130,7 +132,7 @@ const EXAMPLES = [
     verdict: "AL",
     score: 84,
     accent: "linear-gradient(90deg,#2563eb,#60a5fa)",
-    scoreColor: "#2563eb",
+    scoreColor: "#60a5fa",
     sat: 88,
     risk: 18,
     val: 74,
@@ -150,8 +152,8 @@ function ExampleCards({ onSelect }: { onSelect: (q: string) => void }) {
       {EXAMPLES.map((ex) => {
         const vStyle =
           ex.verdict === "AL"
-            ? "border-green-200 bg-green-50 text-green-700"
-            : "border-orange-200 bg-orange-50 text-orange-700";
+            ? "border-[#c8f135]/25 bg-[#c8f135]/10 text-[#c8f135]"
+            : "border-[#ffd93d]/25 bg-[#ffd93d]/10 text-[#ffd93d]";
         return (
           <div
             key={ex.name}
@@ -164,37 +166,37 @@ function ExampleCards({ onSelect }: { onSelect: (q: string) => void }) {
                 onSelect(ex.q);
               }
             }}
-            className="group relative cursor-pointer overflow-hidden rounded-2xl border border-[#E8E8E4] bg-white transition-all duration-300 hover:-translate-y-2 hover:border-[#0D0D0D]/20 hover:shadow-[0_12px_40px_rgba(0,0,0,0.10)]"
+            className="group relative cursor-pointer overflow-hidden rounded-2xl border border-white/8 bg-white/3 transition-all duration-300 hover:-translate-y-2 hover:border-white/20 hover:shadow-[0_16px_48px_rgba(0,0,0,0.5)]"
           >
             <div className="h-[3px] w-full" style={{ background: ex.accent }} />
             <div className="p-5">
               <div className="mb-3 flex items-center justify-between">
-                <span className="text-xs text-[#9A9A9A]">{ex.cat}</span>
-                <span className={`rounded-full border px-3 py-0.5 text-[10px] font-bold tracking-wider ${vStyle}`}>
+                <span className="text-xs text-white/35">{ex.cat}</span>
+                <span className={`rounded-full border px-3 py-0.5 text-[10px] font-black tracking-wider ${vStyle}`}>
                   {ex.verdict === "AL" ? "✓ ALINIR" : "⚡ BEKLE"}
                 </span>
               </div>
-              <h3 className="mb-4 font-serif text-xl italic leading-tight text-[#0D0D0D]">{ex.name}</h3>
+              <h3 className="mb-4 font-serif text-xl italic leading-tight text-white">{ex.name}</h3>
               <div className="mb-4 flex items-baseline gap-2">
                 <span className="font-serif text-5xl italic leading-none" style={{ color: ex.scoreColor }}>
                   {ex.score}
                 </span>
-                <span className="pb-1 text-xs text-[#9A9A9A]">Genel Skor</span>
+                <span className="pb-1 text-xs text-white/30">Genel Skor</span>
               </div>
               <div className="mb-4 space-y-2">
                 {(
                   [
-                    ["Memnuniyet", ex.sat, "#16a34a"],
-                    ["Risk", ex.risk, "#C0281A"],
-                    ["Değer", ex.val, "#2563eb"],
+                    ["Memnuniyet", ex.sat, "#c8f135"],
+                    ["Risk", ex.risk, "#ff6b6b"],
+                    ["Değer", ex.val, "#60a5fa"],
                   ] as const
                 ).map(([l, v, c]) => (
                   <div key={String(l)} className="flex items-center gap-2">
-                    <span className="w-20 shrink-0 text-[9px] uppercase tracking-wider text-[#9A9A9A]">{l}</span>
-                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#F3F3F0]">
+                    <span className="w-20 shrink-0 text-[9px] uppercase tracking-wider text-white/25">{l}</span>
+                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/8">
                       <div className="h-full rounded-full" style={{ width: `${v}%`, background: String(c) }} />
                     </div>
-                    <span className="w-5 text-right text-[10px] text-[#9A9A9A]">{v}</span>
+                    <span className="w-5 text-right text-[10px] text-white/30">{v}</span>
                   </div>
                 ))}
               </div>
@@ -203,16 +205,16 @@ function ExampleCards({ onSelect }: { onSelect: (q: string) => void }) {
                   <span
                     key={tag.t}
                     className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${
-                      tag.pro ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+                      tag.pro ? "bg-[#c8f135]/8 text-[#c8f135]/70" : "bg-[#ff6b6b]/8 text-[#ff6b6b]/70"
                     }`}
                   >
                     {tag.t}
                   </span>
                 ))}
               </div>
-              <p className="text-xs italic leading-relaxed text-[#9A9A9A]">{ex.insight}</p>
+              <p className="font-serif text-xs italic leading-relaxed text-white/35">{ex.insight}</p>
             </div>
-            <div className="border-t border-[#E8E8E4] px-5 py-3 text-xs font-medium text-[#9A9A9A] transition-all group-hover:bg-[#0D0D0D] group-hover:text-white">
+            <div className="border-t border-white/6 px-5 py-3 text-xs font-medium text-white/30 transition-all group-hover:bg-[#c8f135]/8 group-hover:text-[#c8f135]/70">
               Bu ürünü analiz et →
             </div>
           </div>
@@ -224,12 +226,12 @@ function ExampleCards({ onSelect }: { onSelect: (q: string) => void }) {
 
 function HowItWorks() {
   return (
-    <div className="reveal border-t border-[#E8E8E4] py-24">
-      <p className="mb-4 text-center text-[10px] font-bold uppercase tracking-[0.15em] text-[#9A9A9A]">Nasıl Çalışır</p>
-      <h2 className="mb-12 text-center font-serif text-4xl italic leading-tight text-[#0D0D0D]">
-        Üç adımda <span className="text-[#9A9A9A]">net karar.</span>
+    <div className="reveal border-t border-white/6 py-24" id="how">
+      <p className="mb-4 text-center text-[10px] font-black uppercase tracking-[0.18em] text-white/25">Nasıl Çalışır</p>
+      <h2 className="mb-12 text-center font-serif text-4xl italic leading-tight text-white">
+        Üç adımda <span className="text-white/30">net karar.</span>
       </h2>
-      <div className="grid grid-cols-1 divide-y divide-[#E8E8E4] overflow-hidden rounded-2xl border border-[#E8E8E4] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+      <div className="grid grid-cols-1 divide-y divide-white/6 overflow-hidden rounded-2xl border border-white/6 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
         {(
           [
             ["01", "Ürün adını yaz", "Ürün adı, Amazon linki veya ASIN. Ne yazarsan yaz, sistem tanır ve kategorize eder."],
@@ -237,10 +239,10 @@ function HowItWorks() {
             ["03", "Net karar al", "Al / Bekle / Alma. Skor, risk özeti, en güçlü alternatif. Pişmanlık yok."],
           ] as const
         ).map(([n, t, d]) => (
-          <div key={n} className="bg-white p-8">
-            <div className="mb-5 font-serif text-5xl italic leading-none text-[#E8E8E4]">{n}</div>
-            <h3 className="mb-2 text-base font-semibold text-[#0D0D0D]">{t}</h3>
-            <p className="text-sm font-light leading-relaxed text-[#4A4A4A]">{d}</p>
+          <div key={n} className="bg-white/2 p-8">
+            <div className="mb-5 font-serif text-5xl italic leading-none text-white/8">{n}</div>
+            <h3 className="mb-2 text-base font-semibold text-white">{t}</h3>
+            <p className="text-sm font-light leading-relaxed text-white/40">{d}</p>
           </div>
         ))}
       </div>
@@ -250,38 +252,38 @@ function HowItWorks() {
 
 function ScoreBreakdown() {
   return (
-    <div className="reveal overflow-hidden rounded-2xl border border-[#E8E8E4]">
+    <div className="reveal overflow-hidden rounded-2xl border border-white/6">
       <div className="grid grid-cols-1 sm:grid-cols-2">
-        <div className="bg-[#0D0D0D] p-8 sm:p-10">
-          <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">Skor Mimarisi</p>
+        <div className="border-b border-white/6 bg-white/3 p-8 sm:border-b-0 sm:border-r sm:p-10">
+          <p className="mb-4 text-[10px] font-black uppercase tracking-[0.18em] text-white/25">Skor Mimarisi</p>
           <h2 className="mb-4 font-serif text-3xl italic leading-tight text-white">
-            Her kararın <span className="text-white/40">arkasında veri var.</span>
+            Her kararın <span className="text-white/30">arkasında veri var.</span>
           </h2>
-          <p className="text-sm font-light leading-relaxed text-white/50">
+          <p className="text-sm font-light leading-relaxed text-white/40">
             Tek bir yıldız ortalaması değil. Dört farklı boyutu ölçüyoruz, ağırlıklı bir karar üretiyoruz.
           </p>
         </div>
-        <div className="divide-y divide-[#E8E8E4] bg-white p-8 sm:p-10">
+        <div className="divide-y divide-white/6 bg-white/2 p-8 sm:p-10">
           {(
             [
-              ["★", "Satisfaction Score", "Gerçek memnuniyet, tekrar alma niyeti", "30%", "#16a34a"],
-              ["⚠", "Flaw / Risk Score", "Şikayetler, arıza oranı, iade dili", "25%", "#C0281A"],
-              ["◎", "Expert Score", "Uzman testleri, benchmark, editör tavsiyesi", "20%", "#2563eb"],
-              ["◈", "Price / Value Score", "Segment içi fiyat kıyası, overpriced sinyali", "25%", "#C05A1A"],
+              ["★", "Satisfaction Score", "Gerçek memnuniyet, tekrar alma niyeti", "30%", "#c8f135"],
+              ["⚠", "Flaw / Risk Score", "Şikayetler, arıza oranı, iade dili", "25%", "#ff6b6b"],
+              ["◎", "Expert Score", "Uzman testleri, benchmark, editör tavsiyesi", "20%", "#60a5fa"],
+              ["◈", "Price / Value Score", "Segment içi fiyat kıyası, overpriced sinyali", "25%", "#ffd93d"],
             ] as const
           ).map(([icon, name, detail, pct, color]) => (
             <div key={String(name)} className="flex items-center gap-4 py-4">
               <div
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#E8E8E4] text-lg"
-                style={{ color }}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg"
+                style={{ background: `${color}15`, color }}
               >
                 {icon}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-[#0D0D0D]">{name}</p>
-                <p className="text-xs font-light text-[#9A9A9A]">{detail}</p>
+                <p className="text-sm font-medium text-white/80">{name}</p>
+                <p className="text-xs font-light text-white/35">{detail}</p>
               </div>
-              <span className="shrink-0 font-serif text-xl italic text-[#9A9A9A]">{pct}</span>
+              <span className="shrink-0 font-serif text-xl italic text-white/25">{pct}</span>
             </div>
           ))}
         </div>
@@ -290,65 +292,71 @@ function ScoreBreakdown() {
   );
 }
 
+type Plan = {
+  name: string;
+  price: string;
+  credits: string;
+  features: string[];
+  featured: boolean;
+  badge?: string;
+};
+
+const PLANS: Plan[] = [
+  { name: "Ücretsiz", price: "$0", credits: "2 analiz hakkı", features: ["Temel skor", "1 alternatif", "Risk özeti"], featured: false },
+  { name: "Starter", price: "$5", credits: "7 analiz kredisi", features: ["Tam skor detayı", "2 alternatif", "Risk breakdown", "Analiz geçmişi"], featured: false },
+  {
+    name: "Standard",
+    price: "$10",
+    credits: "15 analiz kredisi",
+    features: ["Her şey dahil", "Karşılaştırma modu", "Derin risk analizi", "Öncelikli analiz"],
+    featured: true,
+    badge: "En Popüler",
+  },
+  { name: "Pro", price: "$25", credits: "40 analiz kredisi", features: ["Her şey dahil", "Derin kategoriler", "Fiyat alarmı", "API erişimi"], featured: false },
+];
+
 function Pricing() {
-  const plans = [
-    { name: "Ücretsiz", price: "$0", credits: "2 analiz hakkı", features: ["Temel skor", "1 alternatif", "Risk özeti"], featured: false },
-    { name: "Starter", price: "$5", credits: "7 analiz kredisi", features: ["Tam skor detayı", "2 alternatif", "Risk breakdown", "Analiz geçmişi"], featured: false },
-    {
-      name: "Standard",
-      price: "$10",
-      credits: "15 analiz kredisi",
-      features: ["Her şey dahil", "Karşılaştırma modu", "Derin risk analizi", "Öncelikli analiz"],
-      featured: true,
-      badge: "En Popüler",
-    },
-    { name: "Pro", price: "$25", credits: "40 analiz kredisi", features: ["Her şey dahil", "Derin kategoriler", "Fiyat alarmı", "API erişimi"], featured: false },
-  ] as const;
   return (
-    <div className="reveal border-t border-[#E8E8E4] py-24">
-      <p className="mb-4 text-center text-[10px] font-bold uppercase tracking-[0.15em] text-[#9A9A9A]">Fiyatlandırma</p>
-      <h2 className="mb-12 text-center font-serif text-4xl italic leading-tight text-[#0D0D0D]">
-        Kullandığın kadar <span className="text-[#9A9A9A]">öde.</span>
+    <div className="reveal border-t border-white/6 py-24" id="pricing">
+      <p className="mb-4 text-center text-[10px] font-black uppercase tracking-[0.18em] text-white/25">Fiyatlandırma</p>
+      <h2 className="mb-12 text-center font-serif text-4xl italic leading-tight text-white">
+        Kullandığın kadar <span className="text-white/30">öde.</span>
       </h2>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {plans.map((p) => (
+        {PLANS.map((p) => (
           <div
             key={p.name}
             className={`relative rounded-2xl border p-6 transition-all hover:-translate-y-1 ${
               p.featured
-                ? "border-[#0D0D0D] bg-[#0D0D0D] shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
-                : "border-[#E8E8E4] bg-white hover:border-[#0D0D0D]/30 hover:shadow-md"
+                ? "border-[#c8f135]/35 shadow-[0_0_40px_rgba(200,241,53,0.08)]"
+                : "border-white/8 bg-white/3 hover:border-white/20"
             }`}
+            style={
+              p.featured ? { background: "linear-gradient(135deg,rgba(200,241,53,0.07) 0%,#111 60%)" } : undefined
+            }
           >
-            {"badge" in p && p.badge ? (
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#0D0D0D] px-3 py-0.5 text-[10px] font-bold tracking-wider text-white">
+            {p.badge ? (
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#c8f135] px-3 py-0.5 text-[10px] font-black tracking-wider text-black">
                 {p.badge}
               </div>
             ) : null}
-            <p className={`mb-3 text-[10px] font-bold uppercase tracking-wider ${p.featured ? "text-white/40" : "text-[#9A9A9A]"}`}>
-              {p.name}
-            </p>
-            <p className={`mb-1 font-serif text-4xl italic leading-none ${p.featured ? "text-white" : "text-[#0D0D0D]"}`}>
-              {p.price}
-            </p>
-            <p className={`mb-5 text-xs font-light ${p.featured ? "text-white/50" : "text-[#9A9A9A]"}`}>{p.credits}</p>
+            <p className="mb-3 text-[10px] font-black uppercase tracking-wider text-white/30">{p.name}</p>
+            <p className="mb-1 font-serif text-4xl italic leading-none text-white">{p.price}</p>
+            <p className="mb-5 text-xs font-light text-white/30">{p.credits}</p>
             <ul className="mb-6 space-y-2">
               {p.features.map((f) => (
-                <li
-                  key={f}
-                  className={`flex items-center gap-2 text-xs font-light ${p.featured ? "text-white/60" : "text-[#4A4A4A]"}`}
-                >
-                  <span className={p.featured ? "text-white/25" : "text-[#9A9A9A]"}>—</span>
+                <li key={f} className="flex items-center gap-2 text-xs font-light text-white/45">
+                  <span className="text-white/20">—</span>
                   {f}
                 </li>
               ))}
             </ul>
             <button
               type="button"
-              className={`w-full rounded-xl py-2.5 text-xs font-bold tracking-wide transition-all ${
+              className={`w-full rounded-xl py-2.5 text-xs font-black tracking-wide transition-all ${
                 p.featured
-                  ? "bg-white text-[#0D0D0D] hover:bg-white/90"
-                  : "border border-[#E8E8E4] text-[#4A4A4A] hover:border-[#0D0D0D] hover:text-[#0D0D0D]"
+                  ? "bg-[#c8f135] text-black hover:bg-[#d4f75a] hover:shadow-[0_0_20px_rgba(200,241,53,0.3)]"
+                  : "border border-white/10 text-white/50 hover:border-white/25 hover:text-white/80"
               }`}
             >
               {p.featured ? "Başla →" : "Seç"}
@@ -385,24 +393,26 @@ function Testimonials() {
     },
   ];
   return (
-    <div className="reveal border-t border-[#E8E8E4] py-24">
-      <p className="mb-4 text-center text-[10px] font-bold uppercase tracking-[0.15em] text-[#9A9A9A]">Kullanıcılar</p>
-      <h2 className="mb-12 text-center font-serif text-4xl italic leading-tight text-[#0D0D0D]">
-        Pişmanlık yok, <span className="text-[#9A9A9A]">karar var.</span>
+    <div className="reveal border-t border-white/6 py-24">
+      <p className="mb-4 text-center text-[10px] font-black uppercase tracking-[0.18em] text-white/25">Kullanıcılar</p>
+      <h2 className="mb-12 text-center font-serif text-4xl italic leading-tight text-white">
+        Pişmanlık yok, <span className="text-white/30">karar var.</span>
       </h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {items.map((t) => (
-          <div key={t.name} className="rounded-2xl border border-[#E8E8E4] bg-white p-6">
-            <p className="mb-5 font-serif text-base italic leading-relaxed text-[#0D0D0D]">&ldquo;{t.q}&rdquo;</p>
+          <div key={t.name} className="rounded-2xl border border-white/8 bg-white/3 p-6">
+            <p className="mb-5 font-serif text-base italic leading-relaxed text-white/75">
+              &ldquo;{t.q}&rdquo;
+            </p>
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F3F3F0] text-xs font-semibold text-[#4A4A4A]">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/8 text-xs font-bold text-white/50">
                 {t.init}
               </div>
               <div>
-                <p className="text-xs font-semibold text-[#0D0D0D]">{t.name}</p>
-                <p className="text-[10px] text-[#9A9A9A]">{t.handle}</p>
+                <p className="text-xs font-semibold text-white/70">{t.name}</p>
+                <p className="text-[10px] text-white/35">{t.handle}</p>
               </div>
-              <span className="ml-auto whitespace-nowrap rounded-full border border-green-200 bg-green-50 px-2.5 py-1 text-[10px] font-semibold text-green-700">
+              <span className="ml-auto whitespace-nowrap rounded-full border border-[#c8f135]/20 bg-[#c8f135]/10 px-2.5 py-1 text-[10px] font-semibold text-[#c8f135]/70">
                 {t.saved}
               </span>
             </div>
@@ -448,6 +458,8 @@ export default function Home() {
     [setQuery, submit]
   );
 
+  const runSubmit = useCallback(() => void submit(), [submit]);
+
   useEffect(() => {
     if (hasResult || loading) return;
     const els = document.querySelectorAll(".reveal");
@@ -464,24 +476,27 @@ export default function Home() {
     return () => obs.disconnect();
   }, [hasResult, loading]);
 
-  const runSubmit = useCallback(() => void submit(), [submit]);
-
   return (
-    <div className="min-h-screen bg-[#FAFAF8]">
-      <nav className="fixed left-0 right-0 top-0 z-50 flex h-[60px] items-center justify-between border-b border-[#E8E8E4] bg-[#FAFAF8]/90 px-6 backdrop-blur-md sm:px-10">
-        <span className="font-serif text-xl italic text-[#0D0D0D]">Worthit</span>
-        <div className="hidden gap-8 text-sm text-[#4A4A4A] sm:flex">
-          <a href="#how" className="transition-colors hover:text-[#0D0D0D]">
+    <div className="min-h-screen bg-[#0a0a0a]">
+      <nav
+        className="fixed left-0 right-0 top-0 z-50 flex h-[60px] items-center justify-between border-b border-white/6 px-6 sm:px-10"
+        style={{ background: "rgba(10,10,10,0.88)", backdropFilter: "blur(12px)" }}
+      >
+        <span className="font-serif text-xl italic" style={{ color: "#c8f135" }}>
+          Worthit
+        </span>
+        <div className="hidden gap-8 text-sm text-white/40 sm:flex">
+          <a href="#how" className="transition-colors hover:text-white/80">
             Nasıl Çalışır
           </a>
-          <a href="#pricing" className="transition-colors hover:text-[#0D0D0D]">
+          <a href="#pricing" className="transition-colors hover:text-white/80">
             Fiyatlar
           </a>
         </div>
         <button
           type="button"
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          className="rounded-lg bg-[#0D0D0D] px-4 py-2 text-xs font-bold text-white transition-all hover:opacity-80"
+          className="rounded-lg bg-[#c8f135] px-4 py-2 text-xs font-black text-black transition-all hover:bg-[#d4f75a]"
         >
           Ücretsiz Dene
         </button>
@@ -489,23 +504,28 @@ export default function Home() {
 
       <TickerBar />
 
-      <div className={`pb-0 pt-[60px] transition-all duration-700 ${hasResult ? "pb-6 pt-[72px]" : ""}`}>
+      <div className={`pt-[60px] transition-all duration-700 ${hasResult ? "" : "pb-0"}`}>
         <div className={`mx-auto max-w-2xl px-4 sm:px-6 ${hasResult ? "pt-8" : ""}`}>
           {!hasResult && (
             <div className="flex flex-col items-center pb-14 pt-20 text-center">
-              <div className="anim-1 mb-10 inline-flex items-center gap-2 rounded-full border border-[#E8E8E4] bg-white px-4 py-1.5 text-xs font-medium text-[#4A4A4A] shadow-sm">
-                <span className="h-1.5 w-1.5 rounded-full bg-green-500 pulse-dot" />
+              <div className="anim-1 mb-10 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium text-white/50">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#c8f135] pulse-dot" />
                 <LiveCounter /> analiz yapıldı bu hafta
               </div>
 
-              <h1 className="anim-2 max-w-xl text-[clamp(52px,8vw,88px)] font-serif italic leading-[1.05] tracking-tight text-[#0D0D0D]">
+              <h1
+                className="anim-2 font-serif italic leading-[1.05] tracking-tight text-white"
+                style={{ fontSize: "clamp(52px,8vw,88px)" }}
+              >
                 Bu ürünü
                 <br />
-                <span className="text-[#9A9A9A]">almalı mısın?</span>
+                <span style={{ color: "#c8f135", textShadow: "0 0 48px rgba(200,241,53,0.25)" }}>almalı mısın?</span>
               </h1>
 
-              <p className="anim-3 mb-12 max-w-md text-lg font-light leading-relaxed text-[#4A4A4A]">
-                500 yorumu ve uzman testlerini 30 saniyede analiz ediyoruz. Tek ekranda net bir karar.
+              <p className="anim-3 mb-12 max-w-md text-lg font-light leading-relaxed text-white/40">
+                500 yorumu ve uzman testlerini 30 saniyede analiz ediyoruz.
+                <br />
+                <span className="font-normal text-white/65">Tek ekranda net bir karar.</span>
               </p>
 
               <div className="anim-4 w-full max-w-xl">
@@ -523,47 +543,48 @@ export default function Home() {
                   {["AK", "MB", "SY", "+"].map((init, i) => (
                     <div
                       key={init}
-                      className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#FAFAF8] bg-[#F3F3F0] text-[11px] font-medium text-[#4A4A4A]"
+                      className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#0a0a0a] bg-white/10 text-[11px] font-medium text-white/60"
                       style={{ marginLeft: i === 0 ? 0 : -8 }}
                     >
                       {init}
                     </div>
                   ))}
                 </div>
-                <p className="text-sm font-light text-[#4A4A4A]">
-                  <span className="font-semibold text-[#0D0D0D]">2.400+</span> analiz yapıldı — bu hafta
+                <p className="text-sm font-light text-white/40">
+                  <span className="font-semibold text-white/65">2.400+</span> analiz yapıldı — bu hafta
                 </p>
               </div>
             </div>
           )}
 
           {hasResult && (
-            <div className="mb-6 flex items-center gap-3">
-              <span className="font-serif text-2xl italic text-[#0D0D0D]">Worthit</span>
-              <span className="text-[#E8E8E4]">·</span>
-              <button
-                type="button"
-                onClick={() => {
-                  reset();
-                  clearError();
-                }}
-                className="text-sm text-[#9A9A9A] transition-colors hover:text-[#0D0D0D]"
-              >
-                Yeni analiz
-              </button>
-            </div>
-          )}
-
-          {hasResult && (
-            <div className="mb-6">
-              <SearchForm
-                query={query}
-                onQueryChange={setQuery}
-                onSubmit={runSubmit}
-                loading={loading}
-                onSuggestion={(q) => handleSelect(q)}
-              />
-            </div>
+            <>
+              <div className="mb-6 flex items-center gap-3">
+                <span className="font-serif text-2xl italic" style={{ color: "#c8f135" }}>
+                  Worthit
+                </span>
+                <span className="text-white/20">·</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    reset();
+                    clearError();
+                  }}
+                  className="text-sm text-white/35 transition-colors hover:text-white/70"
+                >
+                  Yeni analiz
+                </button>
+              </div>
+              <div className="mb-6">
+                <SearchForm
+                  query={query}
+                  onQueryChange={setQuery}
+                  onSubmit={runSubmit}
+                  loading={loading}
+                  onSuggestion={(q) => handleSelect(q)}
+                />
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -576,35 +597,29 @@ export default function Home() {
 
       {!hasResult && !loading && (
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
-          <div className="border-t border-[#E8E8E4] pb-16 pt-12">
+          <div className="border-t border-white/6 pb-16 pt-12">
             <div className="mb-8">
               <TrendingPills onSelect={handleSelect} />
             </div>
             <div className="mb-5 flex items-center justify-between">
-              <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#9A9A9A]">Popüler Analizler</p>
-              <a href="#" className="text-xs text-[#9A9A9A] transition-colors hover:text-[#0D0D0D]">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/25">Popüler Analizler</p>
+              <a href="#" className="text-xs text-white/30 transition-colors hover:text-white/60">
                 Tümünü gör →
               </a>
             </div>
             <ExampleCards onSelect={handleSelect} />
           </div>
-
-          <div id="how">
-            <HowItWorks />
-          </div>
+          <HowItWorks />
           <ScoreBreakdown />
-          <div id="pricing">
-            <Pricing />
-          </div>
+          <Pricing />
           <Testimonials />
-
-          <div className="reveal border-t border-[#E8E8E4] py-24 text-center">
-            <h2 className="mb-4 font-serif text-5xl italic leading-tight text-[#0D0D0D]">
+          <div className="reveal border-t border-white/6 py-24 text-center">
+            <h2 className="mb-4 font-serif text-5xl italic leading-tight text-white">
               İlk analizin
               <br />
-              <span className="text-[#9A9A9A]">ücretsiz.</span>
+              <span className="text-white/30">ücretsiz.</span>
             </h2>
-            <p className="mb-8 text-base font-light leading-relaxed text-[#4A4A4A]">
+            <p className="mb-8 text-base font-light leading-relaxed text-white/40">
               Kredi kartı yok. Kayıt zorunlu değil.
               <br />
               Ürün adını yaz, karar sende.
@@ -613,13 +628,13 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-                className="rounded-xl bg-[#0D0D0D] px-8 py-3.5 text-sm font-bold text-white transition-all hover:opacity-80"
+                className="rounded-xl bg-[#c8f135] px-8 py-3.5 text-sm font-black text-black transition-all hover:bg-[#d4f75a] hover:shadow-[0_0_28px_rgba(200,241,53,0.35)]"
               >
                 Hemen Dene →
               </button>
               <a
                 href="#how"
-                className="rounded-xl border-[1.5px] border-[#E8E8E4] px-8 py-3.5 text-sm font-medium text-[#4A4A4A] transition-all hover:border-[#0D0D0D] hover:text-[#0D0D0D]"
+                className="rounded-xl border border-white/10 px-8 py-3.5 text-sm font-medium text-white/50 transition-all hover:border-white/25 hover:text-white/80"
               >
                 Nasıl Çalışır
               </a>

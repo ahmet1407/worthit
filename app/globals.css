@@ -3,24 +3,17 @@
 @tailwind utilities;
 
 :root {
+  --foreground: #ffffff;
+  --background: #0a0a0a;
+  --lime: #c8f135;
   --ink: #0d0d0d;
-  --ink-mid: #4a4a4a;
-  --ink-soft: #9a9a9a;
   --surface: #fafaf8;
-  --surface-2: #f3f3f0;
-  --border: #e8e8e4;
-  --lime: #4a8c1c;
-  --lime-bg: #f0fae4;
-  --orange: #c05a1a;
-  --orange-bg: #fef6f0;
-  --red: #c0281a;
-  --red-bg: #fef2f0;
+  --border-light: #e8e8e4;
 }
 
 body {
-  font-family: var(--font-dm-sans), system-ui, sans-serif;
-  background: var(--surface);
-  color: var(--ink);
+  color: var(--foreground);
+  background: var(--background);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
@@ -67,23 +60,23 @@ body {
     transform: translateY(0);
   }
 }
+.fade-up {
+  animation: fade-up 0.5s ease both;
+}
 .anim-1 {
   animation: fade-up 0.6s 0.05s both;
 }
 .anim-2 {
-  animation: fade-up 0.6s 0.15s both;
+  animation: fade-up 0.6s 0.18s both;
 }
 .anim-3 {
-  animation: fade-up 0.6s 0.25s both;
+  animation: fade-up 0.6s 0.3s both;
 }
 .anim-4 {
-  animation: fade-up 0.6s 0.35s both;
+  animation: fade-up 0.6s 0.42s both;
 }
 .anim-5 {
-  animation: fade-up 0.6s 0.45s both;
-}
-.fade-up {
-  animation: fade-up 0.5s ease both;
+  animation: fade-up 0.6s 0.54s both;
 }
 
 @keyframes pop {

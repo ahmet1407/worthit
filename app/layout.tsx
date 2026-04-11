@@ -9,7 +9,7 @@ const dmSans = DM_Sans({
   weight: ["300", "400", "500", "700"],
 });
 
-const instrumentSerif = Instrument_Serif({
+const serif = Instrument_Serif({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-serif",
@@ -20,22 +20,18 @@ const instrumentSerif = Instrument_Serif({
 export const metadata: Metadata = {
   title: "Worthit — Al mı alma mı?",
   description: "Ürün adını yaz, yapay zeka ile saniyeler içinde al/alma kararını al.",
-  openGraph: {
-    title: "Worthit — Al mı alma mı?",
-    description: "500 yorumu saniyeler içinde analiz et, net karar al.",
-  },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#FAFAF8",
+  themeColor: "#0a0a0a",
   width: "device-width",
   initialScale: 1,
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="tr" className={`${dmSans.variable} ${instrumentSerif.variable}`}>
-      <body className="antialiased">{children}</body>
+    <html lang="tr" className={`${dmSans.variable} ${serif.variable}`}>
+      <body className="font-sans antialiased">{children}</body>
     </html>
   );
 }
