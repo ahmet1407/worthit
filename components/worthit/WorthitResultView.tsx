@@ -53,9 +53,15 @@ export function WorthitResultView({ result, amazonUrl, verdict }: Props) {
           <ul className="space-y-2.5">
             {result.top_pros.map((p, i) => (
               <li key={i} className="text-sm">
-                <span className="text-[#a3e635]/60 mr-2">✓</span>
-                <span className="text-white/70">{p.point}</span>
-                {p.source && <span className="mt-0.5 block text-xs text-white/25 pl-4">{p.source}</span>}
+                <div className="flex gap-2">
+                  <span className="text-[#a3e635]/60 shrink-0 pt-0.5" aria-hidden>
+                    ✓
+                  </span>
+                  <div>
+                    <span className="text-white/70">{p.point}</span>
+                    {p.source && <span className="mt-0.5 block text-xs text-white/25">{p.source}</span>}
+                  </div>
+                </div>
               </li>
             ))}
           </ul>
@@ -65,9 +71,15 @@ export function WorthitResultView({ result, amazonUrl, verdict }: Props) {
           <ul className="space-y-2.5">
             {result.top_cons.map((c, i) => (
               <li key={i} className="text-sm">
-                <span className="text-red-400/60 mr-2">✕</span>
-                <span className="text-white/70">{c.point}</span>
-                {c.source && <span className="mt-0.5 block text-xs text-white/25 pl-4">{c.source}</span>}
+                <div className="flex gap-2">
+                  <span className="text-red-400/60 shrink-0 pt-0.5" aria-hidden>
+                    ✕
+                  </span>
+                  <div>
+                    <span className="text-white/70">{c.point}</span>
+                    {c.source && <span className="mt-0.5 block text-xs text-white/25">{c.source}</span>}
+                  </div>
+                </div>
               </li>
             ))}
           </ul>

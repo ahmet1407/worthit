@@ -107,7 +107,9 @@ function dedupeAmazonUrls(urls: string[]): string[] {
   return out;
 }
 
-async function tavilySearchBody(body: Record<string, unknown>): Promise<{ results?: { url: string }[] }> {
+type TavilyHit = { url?: string; title?: string; content?: string; score?: number };
+
+async function tavilySearchBody(body: Record<string, unknown>): Promise<{ results?: TavilyHit[] }> {
   const key = process.env.TAVILY_API_KEY;
   if (!key) throw new Error("TAVILY_API_KEY eksik");
   const res = await fetch("https://api.tavily.com/search", {
@@ -125,42 +127,136 @@ async function tavilySearchBody(body: Record<string, unknown>): Promise<{ result
     const t = await res.text();
     throw new Error(`Tavily hatası: ${res.status} ${t}`);
   }
-  return (await res.json()) as { results?: { url: string }[] };
+  return (await res.json()) as { results?: TavilyHit[] };
 }
 
-async function tavilyCollectAmazonUrls(searchQuery: string): Promise<string[]> {
-  const q = searchQuery.trim();
-  const simple = simplifyProductQuery(q);
-  const strategies: Record<string, unknown>[] = [
+/** Kullanıcı muhtemelen ana cihaz istiyor (aksesuar anahtar kelimesi yok) */
+function userLikelyWantsMainAppliance(userInput: string): boolean {
+  return !/\b(aksesuar|başlık|filtre|yedek|hortum|boru|mop|fırça başlığı|şarj istasyonu|battery|kılıf|case only)\b/i.test(
+    userInput
+  );
+}
+
+/**
+ * Tavily başlık/özet + sorgu: aksesuar listelerini düşür, tam süpürge / ana ürünü yükselt.
+ * Yanlış ilk sonuç (ör. “Dyson V15 uyumlu başlık”) sorununu azaltır.
+ */
+function scoreTavilyHitForQuery(userQuery: string, hit: TavilyHit): number {
+  const title = (hit.title ?? "").toLowerCase();
+  const content = (hit.content ?? "").slice(0, 800).toLowerCase();
+  const hay = `${title} ${content}`;
+  const q = userQuery.toLowerCase();
+  const rawScore = Number(hit.score);
+  let s = Number.isFinite(rawScore) ? Math.min(22, Math.max(0, rawScore * 22)) : 8;
+
+  if (!userLikelyWantsMainAppliance(userQuery)) return s;
+
+  const accessoryCue =
+    /\b(ile uyumlu|uyumludur|uyumlu ile|for dyson|compatible with|i̇le uyumlu|için uygun|replacement|yedek parça|aksesuar|accessory\b|zemin aracı|zemın aracı|floor tool|floor head|brush head|sadece başlık|başlığı)\b/i.test(
+      hay
+    );
+  if (accessoryCue) s -= 48;
+
+  const mainApplianceCue =
+    /\b(elektrikli süpürge|kablosuz süpürge|şarjlı süpürge|cordless vacuum|stick vacuum|dikey süpürge|dikey_supurge|handheld vacuum)\b/i.test(
+      hay
+    );
+  if (mainApplianceCue) s += 32;
+
+  if (/\bdyson\b/i.test(q) && /\bv\s*15|v15\b/i.test(q)) {
+    if (/\b(detect|absolute|outsize|animal|complete)\b/i.test(hay)) s += 22;
+  }
+
+  // Kısa sorgu + uyumluluk dili → güçlü şüphe
+  if (accessoryCue && !mainApplianceCue && q.split(/\s+/).filter(Boolean).length <= 5) {
+    s -= 12;
+  }
+
+  return s;
+}
+
+function tavilyStrategiesForProduct(simple: string, rawInput: string): Record<string, unknown>[] {
+  const q = simple.trim();
+  const slug = `${simple} ${rawInput}`.toLowerCase();
+  const precision: Record<string, unknown>[] = [];
+
+  precision.push(
+    { query: `${q} orijinal elektrikli süpürge`, include_domains: ["amazon.com.tr"], max_results: 15 },
+    { query: `${q} kablosuz süpürge`, include_domains: ["amazon.com.tr"], max_results: 15 },
+    { query: `${q} resmi mağaza amazon`, include_domains: ["amazon.com.tr"], max_results: 12 }
+  );
+
+  if (/dyson/i.test(slug) && /v\s*15|v15/i.test(slug)) {
+    precision.unshift(
+      { query: "Dyson V15 Detect kablosuz süpürge site:amazon.com.tr", max_results: 12 },
+      { query: "Dyson V15 Absolute Outsize elektrikli süpürge amazon.com.tr", max_results: 12 }
+    );
+  }
+
+  const broad: Record<string, unknown>[] = [
     { query: q, include_domains: ["amazon.com.tr"] },
     { query: `${q} alışveriş`, include_domains: ["amazon.com.tr"] },
     { query: `${q} site:amazon.com.tr` },
     { query: `${q} site:amazon.com OR site:amazon.com.tr OR site:amazon.co.uk` },
-    { query: simple !== q ? simple : `${q} amazon`, include_domains: ["amazon.com.tr"] },
-    { query: `${simple} amazon dp`, max_results: 15 },
-    { query: `${simple} buy amazon`, max_results: 15 },
+    { query: simple !== rawInput.trim() ? simple : `${q} amazon`, include_domains: ["amazon.com.tr"] },
+    { query: `${q} amazon dp`, max_results: 15 },
+    { query: `${q} buy amazon`, max_results: 15 },
   ];
 
-  const found = new Map<string, string>();
-  for (const s of strategies) {
+  return [...precision, ...broad];
+}
+
+async function tavilyCollectAmazonUrls(searchPart: string, rawInput: string): Promise<string[]> {
+  const strategies = tavilyStrategiesForProduct(searchPart, rawInput);
+  /** ASIN → en iyi skorlu URL */
+  const best = new Map<string, { url: string; score: number }>();
+
+  for (const strat of strategies) {
     try {
-      const data = await tavilySearchBody(s);
+      const data = await tavilySearchBody(strat);
       for (const r of sortResultsPreferAmazonTr(data.results ?? [])) {
         const u = r.url;
         if (!u || !AMAZON_URL_RE.test(u)) continue;
         if (u.includes("/browse") || u.includes("/stores") || u.includes("/gp/browse")) continue;
         const clean = u.split("?")[0];
         const a = asinFromProductUrl(clean);
-        if (a && !found.has(a)) found.set(a, clean);
+        if (!a) continue;
+        const sc = scoreTavilyHitForQuery(rawInput.trim() || searchPart, r);
+        const prev = best.get(a);
+        if (!prev || sc > prev.score) best.set(a, { url: clean, score: sc });
       }
-      if (found.size >= 4) break;
+      if (best.size >= 8) break;
     } catch {
       /* sonraki strateji */
     }
   }
 
-  const list = sortResultsPreferAmazonTr(Array.from(found.values(), (url) => ({ url }))).map((x) => x.url!);
-  return list;
+  const ranked = Array.from(best.entries())
+    .sort((a, b) => b[1].score - a[1].score)
+    .map(([, v]) => v.url);
+  if (ranked.length > 0) return ranked;
+  return sortResultsPreferAmazonTr(Array.from(best.values(), (v) => ({ url: v.url }))).map((x) => x.url!);
+}
+
+/** Scrape edilen sayfa, kullanıcının aradığı ana cihaz gibi görünmüyorsa (aksesuar tuzağı) */
+function listingProbablyAccessoryMismatch(userInput: string, s: ScrapedAmazonPayload): boolean {
+  if (!userLikelyWantsMainAppliance(userInput)) return false;
+  const hay = `${s.title}\n${s.breadcrumb}\n${s.markdownExcerpt.slice(0, 6000)}`.toLowerCase();
+  const accessoryCue =
+    /\b(ile uyumlu|uyumludur|for dyson|compatible with|i̇le uyumlu|replacement|yedek parça|aksesuar|accessory\b|zemin aracı|zemın aracı|floor tool|brush head)\b/i.test(
+      hay
+    );
+  const mainApplianceCue =
+    /\b(elektrikli süpürge|kablosuz süpürge|şarjlı süpürge|cordless vacuum|stick vacuum|dikey süpürge)\b/i.test(
+      hay
+    ) || /\bdyson\b.*\bv\s*15\b.*\b(detect|absolute|outsize|animal)\b/i.test(hay);
+
+  const q = userInput.toLowerCase();
+  const words = q.split(/\s+/).filter(Boolean).length;
+  if (/\bdyson\b/i.test(q) && /\bv\s*15|v15\b/i.test(q)) {
+    return accessoryCue && !mainApplianceCue;
+  }
+  return accessoryCue && !mainApplianceCue && words <= 5;
 }
 
 /** Tavily + yapıştırılan URL/ASIN + bölge varyantları — sırayla dene */
@@ -181,7 +277,7 @@ export async function resolveAmazonProductPageUrls(userInput: string): Promise<s
   const searchPart = simplifyProductQuery(raw) || raw;
   let tavilyUrls: string[] = [];
   try {
-    tavilyUrls = await tavilyCollectAmazonUrls(searchPart);
+    tavilyUrls = await tavilyCollectAmazonUrls(searchPart, raw);
   } catch {
     tavilyUrls = [];
   }
@@ -641,6 +737,12 @@ export async function runWorthitPipeline(productName: string): Promise<{
   for (const amazonUrl of urls) {
     try {
       const scraped = await scrapeAmazonForWorthit(amazonUrl);
+      if (listingProbablyAccessoryMismatch(trimmed, scraped)) {
+        errors.push(
+          "Liste muhtemelen ana cihaz değil (uyumlu aksesuar / yanıltıcı başlık); sıradaki sonuç deneniyor."
+        );
+        continue;
+      }
       const report = await analyzeWithClaude(trimmed, scraped);
       return { amazonUrl, report };
     } catch (e) {

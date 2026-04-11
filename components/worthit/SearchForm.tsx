@@ -17,7 +17,7 @@ export function SearchForm({ query, onQueryChange, onSubmit, loading }: Props) {
           type="text"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Ürün adı veya Amazon linki..."
+          placeholder="Tam ürün adı (örn. Dyson V15 Detect) veya Amazon linki…"
           disabled={loading}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-5 py-4 text-base text-white placeholder-white/25 outline-none transition-all focus:border-[#a3e635]/60 focus:bg-white/8 focus:ring-1 focus:ring-[#a3e635]/30 disabled:opacity-50"
         />

@@ -46,7 +46,7 @@ export default function Home() {
         {hasResult && <WorthitResultView result={result} amazonUrl={amazonUrl} verdict={verdict} />}
         {!loading && !error && !result && (
           <div className="mt-4 text-center">
-            <p className="text-xs text-white/20 tracking-wide">Dyson V15 · Sony WH-1000XM5 · iPhone 16 · amazon.com.tr/...</p>
+            <p className="text-xs text-white/20 tracking-wide">Dyson V15 Detect · Sony WH-1000XM5 · iPhone 16 · amazon.com.tr/…</p>
           </div>
         )}
       </div>
