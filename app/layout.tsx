@@ -9,10 +9,10 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Scorecard — Ürün skoru",
+  title: "Worthit — Ürün skoru",
   description: "Amazon verisi ve yapay zeka ile ürün kararı özeti.",
   openGraph: {
-    title: "Scorecard",
+    title: "Worthit",
     description: "Ürün araştırması ve skor kartı",
   },
 };

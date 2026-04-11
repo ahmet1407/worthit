@@ -1,4 +1,4 @@
-import type { Verdict } from "@/lib/scorecard/types";
+import type { Verdict } from "@/lib/worthit/types";
 
 export function verdictBadgeClass(v: Verdict): string {
   switch (v) {

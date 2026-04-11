@@ -1,6 +1,6 @@
 "use client";
 
-import type { ScorecardResult, Verdict } from "@/lib/scorecard/types";
+import type { Verdict, WorthitReport } from "@/lib/worthit/types";
 import { ScoreRing } from "./ScoreRing";
 import { verdictBadgeClass } from "./verdict-styles";
 
@@ -13,12 +13,12 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 type Props = {
-  result: ScorecardResult;
+  result: WorthitReport;
   amazonUrl: string | null;
   verdict: Verdict;
 };
 
-export function ScorecardResultView({ result, amazonUrl, verdict }: Props) {
+export function WorthitResultView({ result, amazonUrl, verdict }: Props) {
   const score = result.overall_score ?? 0;
 
   return (

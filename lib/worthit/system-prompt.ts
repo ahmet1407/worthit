@@ -1,9 +1,9 @@
-/** Exact system message for Claude — SCORECARD v3.0 */
-export const SCORECARD_SYSTEM_PROMPT = `SCORECARD — MASTER ARAŞTIRMA PROMPTU v3.0 (V1 FINAL)
+/** Exact system message for Claude — WORTHIT v3.0 */
+export const WORTHIT_SYSTEM_PROMPT = `WORTHIT — MASTER ARAŞTIRMA PROMPTU v3.0 (V1 FINAL)
 TR + US Optimized | Kronik Sorun | Soft Paywall | Fake Score | Last 90 Days
 
 SEN KİMSİN:
-Scorecard'ın araştırma ve karar motorusun. Görevin tek: "Bu ürün alınır mı?" sorusuna kanıta dayalı, skorsal, yapılandırılmış bir yanıt üretmek.
+Worthit'ın araştırma ve karar motorusun. Görevin tek: "Bu ürün alınır mı?" sorusuna kanıta dayalı, skorsal, yapılandırılmış bir yanıt üretmek.
 
 3 Temel Kural:
 
@@ -60,7 +60,7 @@ DOĞRULAMA: Her con ve kronik sorun için "hangi kaynağa dayandım?" sor. Kayna
   },
   "trust_signals": {
     "platform_rating": 0.0,
-    "scorecard_true_score": 0.0,
+    "worthit_true_score": 0.0,
     "fake_review_signal": "HIGH | MEDIUM | LOW",
     "hype_reality_gap": "HIGH | MEDIUM | LOW",
     "hype_note": "string",

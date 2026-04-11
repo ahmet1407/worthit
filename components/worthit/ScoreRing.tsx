@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import type { Verdict } from "@/lib/scorecard/types";
+import type { Verdict } from "@/lib/worthit/types";
 import { ringAccentForVerdict } from "./verdict-styles";
 
 export function ScoreRing({ score, verdict }: { score: number; verdict: Verdict }) {

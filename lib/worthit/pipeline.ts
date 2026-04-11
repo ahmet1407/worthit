@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { SCORECARD_SYSTEM_PROMPT } from "./system-prompt";
-import type { ScrapedAmazonPayload, ScorecardResult, Verdict } from "./types";
+import { WORTHIT_SYSTEM_PROMPT } from "./system-prompt";
+import type { ScrapedAmazonPayload, Verdict, WorthitReport } from "./types";
 
 function coerceVerdict(v: unknown): Verdict {
   const s = String(v ?? "")
@@ -175,7 +175,7 @@ function reviewsUrlFromProductUrl(productUrl: string): string | null {
   return `https://${domain}/product-reviews/${asin}/ref=cm_cr_arp_d_viewopt_srt?ie=UTF8&reviewerType=all_reviews&sortBy=helpful&filterByStar=one_star&pageNumber=1`;
 }
 
-export async function scrapeAmazonForScorecard(productUrl: string): Promise<ScrapedAmazonPayload> {
+export async function scrapeAmazonForWorthit(productUrl: string): Promise<ScrapedAmazonPayload> {
   const [mainMd, reviewsMd] = await Promise.all([
     firecrawlScrapeUrl(productUrl),
     (async () => {
@@ -236,7 +236,7 @@ ${s.markdownExcerpt}
 ---`;
 }
 
-function extractJsonFromClaudeText(text: string): ScorecardResult {
+function extractJsonFromClaudeText(text: string): WorthitReport {
   let t = text.trim();
   const fence = /^```(?:json)?\s*([\s\S]*?)```$/m;
   const fm = t.match(fence);
@@ -245,15 +245,15 @@ function extractJsonFromClaudeText(text: string): ScorecardResult {
   const end = t.lastIndexOf("}");
   if (start === -1 || end === -1) throw new Error("Claude yanıtında JSON bulunamadı.");
   t = t.slice(start, end + 1);
-  const raw = JSON.parse(t) as Partial<ScorecardResult>;
-  return normalizeScorecard(raw);
+  const raw = JSON.parse(t) as Partial<WorthitReport>;
+  return normalizeWorthitReport(raw);
 }
 
-function normalizeScorecard(raw: Partial<ScorecardResult>): ScorecardResult {
+function normalizeWorthitReport(raw: Partial<WorthitReport>): WorthitReport {
   const emptyScores = { satisfaction: 0, flaw_risk: 0, expert: 0, value: 0 };
   const emptyTrust = {
     platform_rating: 0,
-    scorecard_true_score: 0,
+    worthit_true_score: 0,
     fake_review_signal: "LOW" as const,
     hype_reality_gap: "LOW" as const,
     hype_note: "",
@@ -272,6 +272,13 @@ function normalizeScorecard(raw: Partial<ScorecardResult>): ScorecardResult {
     trust_signals: {
       ...emptyTrust,
       ...raw.trust_signals,
+      worthit_true_score:
+        Number(raw.trust_signals?.worthit_true_score) ||
+        Number(
+          (raw.trust_signals as { scorecard_true_score?: number } | undefined)
+            ?.scorecard_true_score
+        ) ||
+        emptyTrust.worthit_true_score,
       influencer_vs_real: {
         ...emptyTrust.influencer_vs_real,
         ...raw.trust_signals?.influencer_vs_real,
@@ -327,7 +334,7 @@ function normalizeScorecard(raw: Partial<ScorecardResult>): ScorecardResult {
 export async function analyzeWithClaude(
   productName: string,
   scraped: ScrapedAmazonPayload
-): Promise<ScorecardResult> {
+): Promise<WorthitReport> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY eksik");
 
@@ -343,7 +350,7 @@ export async function analyzeWithClaude(
   const msg = await client.messages.create({
     model,
     max_tokens: 8192,
-    system: SCORECARD_SYSTEM_PROMPT,
+    system: WORTHIT_SYSTEM_PROMPT,
     messages: [{ role: "user", content: userContent }],
   });
 
@@ -352,16 +359,16 @@ export async function analyzeWithClaude(
   return extractJsonFromClaudeText(block.text);
 }
 
-export async function runScorecardPipeline(productName: string): Promise<{
+export async function runWorthitPipeline(productName: string): Promise<{
   amazonUrl: string;
-  scorecard: ScorecardResult;
+  report: WorthitReport;
 }> {
   const trimmed = productName.trim();
   if (!trimmed) throw new Error("Ürün adı gerekli.");
 
   const amazonUrl = await tavilySearchAmazon(trimmed);
-  const scraped = await scrapeAmazonForScorecard(amazonUrl);
-  const scorecard = await analyzeWithClaude(trimmed, scraped);
+  const scraped = await scrapeAmazonForWorthit(amazonUrl);
+  const report = await analyzeWithClaude(trimmed, scraped);
 
-  return { amazonUrl, scorecard };
+  return { amazonUrl, report };
 }

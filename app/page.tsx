@@ -1,12 +1,12 @@
 "use client";
 
-import { ErrorAlert } from "@/components/scorecard/ErrorAlert";
-import { LoadingPanel } from "@/components/scorecard/LoadingPanel";
-import { ScorecardResultView } from "@/components/scorecard/ScorecardResultView";
-import { SearchForm } from "@/components/scorecard/SearchForm";
-import { SiteFooter } from "@/components/scorecard/SiteFooter";
-import { normalizeVerdict } from "@/components/scorecard/verdict-styles";
-import { useScorecardSearch } from "@/hooks/useScorecardSearch";
+import { ErrorAlert } from "@/components/worthit/ErrorAlert";
+import { LoadingPanel } from "@/components/worthit/LoadingPanel";
+import { SearchForm } from "@/components/worthit/SearchForm";
+import { SiteFooter } from "@/components/worthit/SiteFooter";
+import { WorthitResultView } from "@/components/worthit/WorthitResultView";
+import { normalizeVerdict } from "@/components/worthit/verdict-styles";
+import { useWorthitSearch } from "@/hooks/useWorthitSearch";
 
 export default function Home() {
   const {
@@ -21,7 +21,7 @@ export default function Home() {
     amazonUrl,
     submit,
     clearError,
-  } = useScorecardSearch();
+  } = useWorthitSearch();
 
   const verdict = result ? normalizeVerdict(result.verdict) : null;
 
@@ -33,7 +33,7 @@ export default function Home() {
             Ürün kararı
           </p>
           <h1 className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-600 bg-clip-text text-4xl font-bold tracking-tight text-transparent sm:text-5xl">
-            Scorecard
+            Worthit
           </h1>
           <p className="mx-auto mt-4 max-w-md text-base leading-relaxed text-slate-600">
             Ürün adını yaz; Amazon verisi ve yapay zeka ile skor, artı/eksi ve özet karar görüntülensin.
@@ -61,7 +61,7 @@ export default function Home() {
           )}
 
           {result && verdict !== null && !loading && (
-            <ScorecardResultView result={result} amazonUrl={amazonUrl} verdict={verdict} />
+            <WorthitResultView result={result} amazonUrl={amazonUrl} verdict={verdict} />
           )}
 
           {!loading && !error && !result && (

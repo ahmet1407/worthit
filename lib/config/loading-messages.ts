@@ -1,5 +1,5 @@
 /** Master prompt v3 ile uyumlu yükleme metinleri (pipeline uzadıkça anlamlı). */
-export const SCORECARD_LOADING_MESSAGES = [
+export const WORTHIT_LOADING_MESSAGES = [
   "Reddit topluluğu taranıyor...",
   "Amazon yorumları filtreleniyor...",
   "Şikayetvar kontrol ediliyor...",

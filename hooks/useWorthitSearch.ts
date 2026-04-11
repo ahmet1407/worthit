@@ -1,18 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SCORECARD_LOADING_MESSAGES } from "@/lib/config/loading-messages";
-import type { ScorecardResult } from "@/lib/scorecard/types";
+import { WORTHIT_LOADING_MESSAGES } from "@/lib/config/loading-messages";
+import type { WorthitReport } from "@/lib/worthit/types";
 
 const ROTATE_MS = 2200;
-const LOADING = SCORECARD_LOADING_MESSAGES;
+const LOADING = WORTHIT_LOADING_MESSAGES;
 
-export function useScorecardSearch() {
+export function useWorthitSearch() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadMsgIndex, setLoadMsgIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ScorecardResult | null>(null);
+  const [result, setResult] = useState<WorthitReport | null>(null);
   const [amazonUrl, setAmazonUrl] = useState<string | null>(null);
   const loadTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -41,7 +41,7 @@ export function useScorecardSearch() {
     setAmazonUrl(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/scorecard", {
+      const res = await fetch("/api/worthit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ productName: q }),
@@ -49,7 +49,7 @@ export function useScorecardSearch() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "İstek başarısız");
       setAmazonUrl(data.amazonUrl as string);
-      setResult(data.scorecard as ScorecardResult);
+      setResult(data.report as WorthitReport);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Hata oluştu");
     } finally {

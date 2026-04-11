@@ -6,7 +6,7 @@ export type Confidence = "HIGH" | "MEDIUM" | "INSUFFICIENT_DATA";
 
 export type Sentiment = "positive" | "negative" | "mixed";
 
-export interface ScorecardResult {
+export interface WorthitReport {
   product_name: string;
   brand: string;
   category: string;
@@ -21,7 +21,7 @@ export interface ScorecardResult {
   };
   trust_signals: {
     platform_rating: number;
-    scorecard_true_score: number;
+    worthit_true_score: number;
     fake_review_signal: SignalLevel;
     hype_reality_gap: SignalLevel;
     hype_note: string;
