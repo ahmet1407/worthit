@@ -1,6 +1,23 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { WORTHIT_SYSTEM_PROMPT } from "./system-prompt";
+import { shortCacheGet, shortCacheKey, shortCacheSet } from "./short-cache";
 import type { ScrapedAmazonPayload, Verdict, WorthitReport } from "./types";
+
+function pipelineLog(step: string, ms: number, extra?: Record<string, unknown>): void {
+  if (process.env.WORTHIT_PIPELINE_LOG === "0") return;
+  console.log(
+    JSON.stringify({
+      worthit_pipeline: step,
+      ms: Math.round(ms),
+      ...extra,
+    })
+  );
+}
+
+/** Yapıştırılmış Amazon URL veya ASIN varsa web varlık ipuçları Tavily’sine gerek yok */
+function shouldSkipWebExistenceHints(rawInput: string): boolean {
+  return Boolean(extractPastedAmazonUrl(rawInput) || extractAsinFromUserQuery(rawInput));
+}
 
 function coerceVerdict(v: unknown): Verdict {
   const s = String(v ?? "")
@@ -218,6 +235,10 @@ async function tavilyWebExistenceHints(productName: string): Promise<string | nu
   const anchor = (simplifyProductQuery(productName) || productName.trim()).slice(0, 96).trim();
   if (anchor.length < 3) return null;
 
+  const ck = shortCacheKey("worthit_exist", anchor);
+  const cached = shortCacheGet<{ hint: string | null }>(ck);
+  if (cached) return cached.hint;
+
   let blob = "";
   try {
     const [r1, r2] = await Promise.allSettled([
@@ -257,13 +278,17 @@ async function tavilyWebExistenceHints(productName: string): Promise<string | nu
 
   const strongUnlikely = neg >= 3 && pos <= 1;
   const mediumUnlikely = neg >= 2 && pos === 0 && blob.length > 320;
-  if (!strongUnlikely && !mediumUnlikely) return null;
+  if (!strongUnlikely && !mediumUnlikely) {
+    shortCacheSet(ck, { hint: null });
+    return null;
+  }
 
-  return (
+  const hint =
     "NOT (Tavily — genel web araması, Amazon değil): Özet metinlerde ‘henüz çıkmadı / duyurulmadı / söylenti’ vb. işaretler baskın; güçlü ‘satışta / sipariş / resmi mağaza’ sinyali az. " +
     "Aşağıdaki Amazon listesi gerçek ve satın alınabilir görünüyorsa listeyi esas al; çelişki varsa verdict_reason’da açıkla, confidence düşür, gerekirse SKIP veya INSUFFICIENT_DATA. " +
-    "Bu NOT’ta olmayan teknik detay uydurma."
-  );
+    "Bu NOT’ta olmayan teknik detay uydurma.";
+  shortCacheSet(ck, { hint });
+  return hint;
 }
 
 /** Kullanıcı muhtemelen ana cihaz istiyor (aksesuar / yedek parça anahtar kelimesi yok) */
@@ -397,12 +422,17 @@ async function tavilyCollectAmazonUrls(searchPart: string, rawInput: string): Pr
     if (r.status === "fulfilled") ingestResults(r.value);
   }
 
-  /** ASIN çok azsa advanced yedek (sıralı, sınırlı) */
-  if (best.size < 2) {
+  const maxAsinScore =
+    best.size > 0 ? Math.max(...Array.from(best.values(), (v) => v.score)) : -999;
+
+  /** ASIN az veya basic skorlar zayıfsa advanced yedek (sıralı, sınırlı) */
+  if (best.size < 2 || maxAsinScore < 10) {
     for (const strat of strategies.slice(0, 4)) {
       try {
         ingestResults(await tavilySearchBody(strat));
-        if (best.size >= 2) break;
+        if (best.size >= 3) break;
+        const mx = Math.max(...Array.from(best.values(), (v) => v.score));
+        if (best.size >= 2 && mx >= 14) break;
       } catch {
         /* */
       }
@@ -483,7 +513,7 @@ function isAmazonUrl(u: string): boolean {
 
 /**
  * Tavily: Amazon dışı kısa pasajlar (paralel). Başarısız sorgular sessizce yutulur.
- * Güven ve kronik sorun için ek bağlam; 6 Tavily sorgusu paralel (basic depth).
+ * Zayıf ilk dalgada ikinci dalga (adaptive). TTL önbellek (aynı anchor).
  */
 async function fetchSupplementalResearch(
   userQuery: string,
@@ -493,6 +523,42 @@ async function fetchSupplementalResearch(
 
   const anchor = shortenResearchAnchor(userQuery, amazonTitle);
   if (anchor.length < 3) return { block: "", urls: [] };
+
+  const ck = shortCacheKey("worthit_supp", anchor);
+  const cached = shortCacheGet<{ block: string; urls: string[] }>(ck);
+  if (cached) return cached;
+
+  type Tagged = { hit: TavilyHit; qIndex: number };
+
+  async function runTavilyBatch(
+    strats: Record<string, unknown>[],
+    qBase: number
+  ): Promise<Tagged[]> {
+    const settled = await Promise.allSettled(
+      strats.map(async (body) => {
+        try {
+          const maxRes = typeof body.max_results === "number" ? body.max_results : 8;
+          return await tavilySearchBody({
+            ...body,
+            search_depth: "basic",
+            max_results: Math.min(10, maxRes),
+          });
+        } catch {
+          return { results: [] as TavilyHit[] };
+        }
+      })
+    );
+    const out: Tagged[] = [];
+    settled.forEach((r, qIndex) => {
+      if (r.status !== "fulfilled") return;
+      for (const hit of r.value.results ?? []) {
+        const u = hit.url?.trim();
+        if (!u || !/^https?:\/\//i.test(u) || isAmazonUrl(u)) continue;
+        out.push({ hit: { ...hit, url: u }, qIndex: qBase + qIndex });
+      }
+    });
+    return out;
+  }
 
   const strategies: Record<string, unknown>[] = [
     { query: `${anchor} sorun şikayet`, include_domains: ["sikayetvar.com"], max_results: 6 },
@@ -510,36 +576,22 @@ async function fetchSupplementalResearch(
     },
   ];
 
-  const settled = await Promise.allSettled(
-    strategies.map(async (body) => {
-      try {
-        const maxRes = typeof body.max_results === "number" ? body.max_results : 8;
-        return await tavilySearchBody({
-          ...body,
-          search_depth: "basic",
-          max_results: Math.min(10, maxRes),
-        });
-      } catch {
-        return { results: [] as TavilyHit[] };
-      }
-    })
-  );
+  let tagged: Tagged[] = await runTavilyBatch(strategies, 0);
 
-  type Tagged = { hit: TavilyHit; qIndex: number };
-  const tagged: Tagged[] = [];
-  settled.forEach((r, qIndex) => {
-    if (r.status !== "fulfilled") return;
-    for (const hit of r.value.results ?? []) {
-      const u = hit.url?.trim();
-      if (!u || !/^https?:\/\//i.test(u) || isAmazonUrl(u)) continue;
-      tagged.push({ hit: { ...hit, url: u }, qIndex });
-    }
-  });
+  const wave2: Record<string, unknown>[] = [
+    { query: `${anchor} long term reliability OR defect OR recall`, max_results: 7 },
+    { query: `${anchor} owner review after 1 year OR 6 months`, max_results: 6 },
+    { query: `${anchor} "would not buy again" OR regret OR disappointed`, max_results: 6 },
+  ];
 
-  tagged.sort((a, b) => {
-    if (a.qIndex !== b.qIndex) return a.qIndex - b.qIndex;
-    return (Number(b.hit.score) || 0) - (Number(a.hit.score) || 0);
-  });
+  function sortTagged(t: Tagged[]) {
+    t.sort((a, b) => {
+      if (a.qIndex !== b.qIndex) return a.qIndex - b.qIndex;
+      return (Number(b.hit.score) || 0) - (Number(a.hit.score) || 0);
+    });
+  }
+
+  sortTagged(tagged);
 
   const seen = new Set<string>();
   const chunks: string[] = [];
@@ -548,29 +600,46 @@ async function fetchSupplementalResearch(
   const maxTotal = 8000;
   const maxSnip = 480;
 
-  for (const { hit } of tagged) {
-    const u = hit.url!;
-    if (seen.has(u)) continue;
-    seen.add(u);
+  function ingestTagged(list: Tagged[]) {
+    for (const { hit } of list) {
+      const u = hit.url!;
+      if (seen.has(u)) continue;
+      seen.add(u);
 
-    const host = hostnameOf(u);
-    const title = (hit.title ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
-    const snippet = (hit.content ?? "").replace(/\s+/g, " ").trim().slice(0, maxSnip);
-    if (!title && !snippet) continue;
+      const host = hostnameOf(u);
+      const title = (hit.title ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
+      const snippet = (hit.content ?? "").replace(/\s+/g, " ").trim().slice(0, maxSnip);
+      if (!title && !snippet) continue;
 
-    const piece = `### ${host}\nURL: ${u}\nBaşlık: ${title || "—"}\nÖzet: ${snippet || "—"}\n\n`;
-    if (used + piece.length > maxTotal) break;
-    chunks.push(piece);
-    urls.push(u);
-    used += piece.length;
-    if (chunks.length >= 18) break;
+      const piece = `### ${host}\nURL: ${u}\nBaşlık: ${title || "—"}\nÖzet: ${snippet || "—"}\n\n`;
+      if (used + piece.length > maxTotal) break;
+      chunks.push(piece);
+      urls.push(u);
+      used += piece.length;
+      if (chunks.length >= 18) break;
+    }
   }
 
-  if (chunks.length === 0) return { block: "", urls: [] };
+  ingestTagged(tagged);
+
+  if (chunks.length < 5 && used < maxTotal * 0.5) {
+    const extra = await runTavilyBatch(wave2, 100);
+    tagged = tagged.concat(extra);
+    sortTagged(tagged);
+    ingestTagged(tagged);
+  }
+
+  if (chunks.length === 0) {
+    const empty = { block: "", urls: [] };
+    shortCacheSet(ck, empty);
+    return empty;
+  }
 
   const block =
     `(${chunks.length} sayfa özeti, yalnızca aşağıdaki metne dayan)\n\n` + chunks.join("");
-  return { block, urls };
+  const result = { block, urls };
+  shortCacheSet(ck, result);
+  return result;
 }
 
 /** Tavily + yapıştırılan URL/ASIN + bölge varyantları — sırayla dene */
@@ -659,9 +728,14 @@ function amazonMarkdownHardBlocked(markdown: string): boolean {
   return block && !productLike;
 }
 
-async function firecrawlFetchMarkdown(key: string, payload: Record<string, unknown>): Promise<string> {
+async function firecrawlFetchMarkdown(
+  key: string,
+  payload: Record<string, unknown>,
+  signal?: AbortSignal
+): Promise<string> {
   const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
     method: "POST",
+    signal,
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${key}`,
@@ -726,32 +800,35 @@ async function firecrawlScrapeAmazonPage(url: string, thorough: boolean): Promis
     mobile: true,
   });
 
-  const settled = await Promise.allSettled(
-    attempts.map((extra) => firecrawlFetchMarkdown(key, extra))
-  );
-
+  const ac = new AbortController();
+  const { signal } = ac;
+  let winner: { markdown: string; quality: number } | null = null;
   let best = "";
   let bestQ = -999;
-  let bestUnblockedQ = -999;
-  let bestUnblocked = "";
 
-  for (const r of settled) {
-    if (r.status !== "fulfilled") continue;
-    const md = r.value;
-    const q = scoreAmazonMarkdownQuality(md);
-    if (q > bestQ || (q === bestQ && md.length > best.length)) {
-      bestQ = q;
-      best = md;
-    }
-    if (!amazonMarkdownHardBlocked(md) && (q > bestUnblockedQ || (q === bestUnblockedQ && md.length > bestUnblocked.length))) {
-      bestUnblockedQ = q;
-      bestUnblocked = md;
-    }
-  }
+  await Promise.allSettled(
+    attempts.map(async (extra) => {
+      try {
+        const md = await firecrawlFetchMarkdown(key, extra, signal);
+        if (winner) return;
+        const q = scoreAmazonMarkdownQuality(md);
+        if (!amazonMarkdownHardBlocked(md) && q >= 38) {
+          winner = { markdown: md, quality: q };
+          ac.abort();
+          return;
+        }
+        if (q > bestQ || (q === bestQ && md.length > best.length)) {
+          bestQ = q;
+          best = md;
+        }
+      } catch (e) {
+        const err = e as { name?: string };
+        if (err?.name === "AbortError") return;
+      }
+    })
+  );
 
-  if (bestUnblockedQ >= 38 && bestUnblocked.trim()) {
-    return { markdown: bestUnblocked, quality: bestUnblockedQ };
-  }
+  if (winner) return winner;
   if (!best.trim()) throw new Error("Firecrawl bu URL için içerik döndürmedi.");
   return { markdown: best, quality: bestQ };
 }
@@ -958,6 +1035,72 @@ ${s.markdownExcerpt}
 ---${extra}`;
 }
 
+function buildResearchDigestInput(
+  productName: string,
+  s: ScrapedAmazonPayload,
+  supplementalBlock?: string,
+  webExistenceNote?: string
+): string {
+  const pre = webExistenceNote?.trim() ? `${webExistenceNote.trim()}\n\n` : "";
+  const supp =
+    supplementalBlock && supplementalBlock.trim().length > 0
+      ? `\n---\nEk web pasajları:\n${supplementalBlock.trim().slice(0, 6000)}\n`
+      : "";
+  return `${pre}Ürün sorgusu: ${productName}
+Amazon başlık: ${s.title}
+Breadcrumb: ${s.breadcrumb}
+Puan: ${s.starRating} | Yorum sayısı metni: ${s.reviewCount}
+
+En düşük puanlı yorumlar:
+${s.lowestReviewsText.slice(0, 6000)}
+
+Amazon sayfa özeti (markdown):
+${s.markdownExcerpt.slice(0, 12_000)}${supp}
+
+Görev: Yalnızca yukarıdaki metinde geçen olgaları Türkçe madde madde özetle. Uydurma yok. Artı/eksiler, şikayet temaları, güven sinyalleri (metinde geçiyorsa). Uzunluk makul olsun.`;
+}
+
+function buildUserMessageWithDigest(
+  productName: string,
+  s: ScrapedAmazonPayload,
+  digest: string,
+  supplementalBlock?: string,
+  webExistenceNote?: string
+): string {
+  const pre = webExistenceNote?.trim() ? `${webExistenceNote.trim()}\n\n` : "";
+  const head = `${pre}${s.scrapingNote ? `${s.scrapingNote}\n\n` : ""}`;
+  const suppShort =
+    supplementalBlock && supplementalBlock.trim().length > 0
+      ? `
+
+---
+Tavily pasajları (kısaltılmış doğrulama özeti):
+---
+${supplementalBlock.trim().slice(0, 4500)}
+---`
+      : "";
+
+  return `${head}ARAŞTIRMACI ÖZETİ (önceki LLM adımı — çelişirse aşağıdaki ham Amazon metnini esas al):
+---
+${digest.slice(0, 12_000)}
+---
+
+Ürün: ${productName}
+
+Amazon'dan çekilen veriler:
+- Başlık: ${s.title}
+- Kategori: ${s.breadcrumb}
+- Puan: ${s.starRating} (${s.reviewCount} yorum)
+- En düşük puanlı yorumlar: ${s.lowestReviewsText}
+
+Bu ürünü analiz et ve yukarıdaki JSON formatında yanıt ver.
+
+Ek bağlam (Firecrawl markdown — kısaltılmış, URL: ${s.sourceUrl}):
+---
+${s.markdownExcerpt.slice(0, 10_000)}
+---${suppShort}`;
+}
+
 function extractJsonFromClaudeText(text: string): WorthitReport {
   let t = text.trim();
   const fence = /^```(?:json)?\s*([\s\S]*?)```$/m;
@@ -1069,14 +1212,52 @@ export async function analyzeWithClaude(
   const model =
     fromEnv && !RETIRED.test(fromEnv) ? fromEnv : fallback;
   const client = new Anthropic({ apiKey: key });
-  const userContent = buildUserMessage(productName, scraped, supplementalBlock, webExistenceNote);
 
+  const twoStage =
+    process.env.WORTHIT_TWO_STAGE === "1" || /^true$/i.test(process.env.WORTHIT_TWO_STAGE ?? "");
+  const digestModel =
+    process.env.WORTHIT_LLM_DIGEST_MODEL?.trim() || "claude-3-5-haiku-20241022";
+
+  let userContent: string;
+  if (twoStage) {
+    const tDig = performance.now();
+    const digestInput = buildResearchDigestInput(
+      productName,
+      scraped,
+      supplementalBlock,
+      webExistenceNote
+    );
+    const digestMsg = await client.messages.create({
+      model: digestModel,
+      max_tokens: 4096,
+      system:
+        "Sen araştırma asistanısın. Yalnızca kullanıcı mesajındaki metinden özet çıkar; uydurma veya dış bilgi ekleme. Türkçe yaz.",
+      messages: [{ role: "user", content: digestInput }],
+    });
+    pipelineLog("claude_digest", performance.now() - tDig, { model: digestModel });
+    const d0 = digestMsg.content.find((b) => b.type === "text");
+    const digest = d0 && d0.type === "text" ? d0.text.trim() : "";
+    userContent = digest.length
+      ? buildUserMessageWithDigest(
+          productName,
+          scraped,
+          digest,
+          supplementalBlock,
+          webExistenceNote
+        )
+      : buildUserMessage(productName, scraped, supplementalBlock, webExistenceNote);
+  } else {
+    userContent = buildUserMessage(productName, scraped, supplementalBlock, webExistenceNote);
+  }
+
+  const tMain = performance.now();
   const msg = await client.messages.create({
     model,
     max_tokens: 8192,
     system: WORTHIT_SYSTEM_PROMPT,
     messages: [{ role: "user", content: userContent }],
   });
+  pipelineLog("claude_final_json", performance.now() - tMain, { model });
 
   const block = msg.content.find((b) => b.type === "text");
   if (!block || block.type !== "text") throw new Error("Claude metin yanıtı döndürmedi.");
@@ -1090,21 +1271,31 @@ export async function runWorthitPipeline(productName: string): Promise<{
   const trimmed = productName.trim();
   if (!trimmed) throw new Error("Ürün adı gerekli.");
 
+  const t0 = performance.now();
+  const skipExist = shouldSkipWebExistenceHints(trimmed);
   const [urls, webExistenceNote] = await Promise.all([
     resolveAmazonProductPageUrls(trimmed),
-    tavilyWebExistenceHints(trimmed),
+    skipExist ? Promise.resolve(null as string | null) : tavilyWebExistenceHints(trimmed),
   ]);
+  pipelineLog("resolve_urls_and_existence", performance.now() - t0, {
+    skip_existence_hints: skipExist,
+    url_candidates: urls.length,
+  });
+
   const errors: string[] = [];
 
   for (const amazonUrl of urls) {
     try {
       const ru = reviewsUrlFromProductUrl(amazonUrl);
+      const tFc = performance.now();
       const mainP = firecrawlScrapeAmazonPage(amazonUrl, true);
       const reviewsP = ru
         ? firecrawlScrapeAmazonPage(ru, false).catch(() => ({ markdown: "", quality: -1 }))
         : Promise.resolve({ markdown: "", quality: -1 });
 
       const mainRes = await mainP;
+      pipelineLog("firecrawl_main", performance.now() - tFc, { amazon_host: hostnameOf(amazonUrl) });
+
       const { markdown: mainMd, quality } = mainRes;
       assertUsableAmazonMain(mainMd, quality);
       const scrapingNote = scrapingNoteForAmazonQuality(quality);
@@ -1112,7 +1303,9 @@ export async function runWorthitPipeline(productName: string): Promise<{
       const titleForResearch = parseTitle(mainMd);
       const supplementalP = fetchSupplementalResearch(trimmed, titleForResearch);
 
+      const tRv = performance.now();
       const [reviewsRes, supplementalRes] = await Promise.all([reviewsP, supplementalP]);
+      pipelineLog("reviews_and_supplemental", performance.now() - tRv);
 
       let reviewsMd = "";
       if (reviewsRes.markdown && !amazonMarkdownHardBlocked(reviewsRes.markdown)) {
@@ -1128,12 +1321,15 @@ export async function runWorthitPipeline(productName: string): Promise<{
         continue;
       }
 
+      const tClaude = performance.now();
       const report = await analyzeWithClaude(
         trimmed,
         scraped,
         supplementalRes.block || undefined,
         webExistenceNote ?? undefined
       );
+      pipelineLog("claude_total", performance.now() - tClaude);
+      pipelineLog("pipeline_success", performance.now() - t0, { amazonUrl });
       return { amazonUrl, report };
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e));
@@ -1141,6 +1337,7 @@ export async function runWorthitPipeline(productName: string): Promise<{
   }
 
   const hint = errors.length ? errors[Math.min(errors.length - 1, 2)] : "";
+  pipelineLog("pipeline_failed", performance.now() - t0, { errors: errors.length });
   throw new Error(
     `Amazon verisi alınamadı (${urls.length} farklı URL denendi). Son hata: ${hint}`.slice(0, 600)
   );
