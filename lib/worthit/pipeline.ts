@@ -372,9 +372,6 @@ function listingProbablyAccessoryMismatch(userInput: string, s: ScrapedAmazonPay
 /** Henüz resmi satışı olmayan / spekülatif model — pipeline erken çıkar (Claude’a sorma) */
 function detectUnavailableProduct(userInput: string): string | null {
   const q = userInput.toLowerCase();
-  if (/\biphone\s*17\b/i.test(q)) {
-    return "iPhone 17 serisi henüz küresel olarak piyasaya çıkmadı (veya çok sınırlı). Analiz için iPhone 16 / 16 Pro gibi mevcut bir model yazabilir veya çıktıktan sonra tekrar deneyebilirsin.";
-  }
   if (/\bgalaxy\s*s26\b/i.test(q)) {
     return "Samsung Galaxy S26 henüz duyurulmadı / satışta değil. Galaxy S25 veya S24 serisi ile dene.";
   }
