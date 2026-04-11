@@ -561,19 +561,55 @@ async function fetchSupplementalResearch(
   }
 
   const strategies: Record<string, unknown>[] = [
-    { query: `${anchor} sorun şikayet`, include_domains: ["sikayetvar.com"], max_results: 6 },
-    { query: `${anchor} kullanıcı deneyimi sorun`, include_domains: ["sikayetvar.com"], max_results: 4 },
-    { query: `${anchor} problems OR issues OR long term owner reddit`, max_results: 8 },
-    { query: `${anchor} site:reddit.com review OR worth it OR regret`, max_results: 8 },
-    { query: `${anchor} fake reviews OR scam OR "waste of money"`, max_results: 6 },
+    // Türkiye şikayet
+    { query: `${anchor} sorun şikayet`, include_domains: ["sikayetvar.com"], max_results: 8 },
+    { query: `${anchor} kullanıcı deneyimi sorun arıza`, include_domains: ["sikayetvar.com"], max_results: 6 },
+    // Türkiye forum / sözlük
     {
-      query: `${anchor} review lab test site:rtings.com OR site:notebookcheck.net OR site:vacuumwars.com OR site:which.co.uk`,
-      max_results: 6,
+      query: `${anchor} sorun tavsiye inceleme`,
+      include_domains: ["technopat.net", "donanimhaber.com", "chip.com.tr"],
+      max_results: 8,
     },
     {
-      query: `${anchor} sorun tavsiye site:technopat.net OR site:donanimhaber.com`,
+      query: `${anchor} aldım kullandım ne diyorsunuz site:eksisozluk.com`,
       max_results: 6,
     },
+    // Reddit
+    { query: `${anchor} problems OR issues OR regret site:reddit.com`, max_results: 8 },
+    { query: `${anchor} long term review owner experience site:reddit.com`, max_results: 8 },
+    {
+      query: `${anchor} "would not buy" OR "waste of money" OR "returned it" site:reddit.com`,
+      max_results: 6,
+    },
+    // Uzman test siteleri
+    {
+      query: `${anchor} review test score`,
+      include_domains: [
+        "rtings.com",
+        "notebookcheck.net",
+        "vacuumwars.com",
+        "which.co.uk",
+        "techradar.com",
+        "tomshardware.com",
+        "gsmarena.com",
+      ],
+      max_results: 6,
+    },
+    // YouTube başlık/snippet özetleri
+    { query: `${anchor} inceleme review 2024 2025 site:youtube.com`, max_results: 5 },
+    // Pazar yeri yorumları
+    {
+      query: `${anchor} yorumlar değerlendirme`,
+      include_domains: ["hepsiburada.com", "trendyol.com"],
+      max_results: 6,
+    },
+    // Sahte yorum / dolandırıcılık sinyali
+    {
+      query: `${anchor} fake reviews OR scam OR counterfeit OR "not as described"`,
+      max_results: 6,
+    },
+    // Fiyat / değer (TR)
+    { query: `${anchor} fiyat değer mi alınır mı TR`, max_results: 6 },
   ];
 
   let tagged: Tagged[] = await runTavilyBatch(strategies, 0);
