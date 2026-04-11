@@ -85,14 +85,65 @@ function simplifyProductQuery(q: string): string {
   return (s.length >= 3 ? s : noUrl).slice(0, 140);
 }
 
+/** URL path/slug token’ları — ana cihaz arayan kullanıcı için aksesuar listelerini ele */
+const ACCESSORY_PATH_TOKENS = new Set([
+  "case",
+  "cases",
+  "cover",
+  "covers",
+  "wallet",
+  "folio",
+  "strap",
+  "band",
+  "bands",
+  "cable",
+  "kablo",
+  "charger",
+  "charging",
+  "adapter",
+  "adaptor",
+  "protector",
+  "glass",
+  "tempered",
+  "stand",
+  "dock",
+  "hub",
+  "sleeve",
+  "pouch",
+  "holster",
+  "bumper",
+  "skin",
+  "sticker",
+  "kilif",
+  "magsafe",
+]);
+
+function urlSlugIsAccessory(url: string): boolean {
+  try {
+    const path = new URL(url).pathname.toLowerCase().replace(/_/g, "-");
+    const tokens = path.split(/[^a-z0-9]+/).filter(Boolean);
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i]!;
+      if (ACCESSORY_PATH_TOKENS.has(t)) return true;
+      if (t === "screen" && tokens[i + 1] === "protector") return true;
+      if (t === "wallet" && tokens[i + 1] === "case") return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 /** Aynı ASIN’in farklı ülke mağazalarını koru; yalnızca (asin|host) tekrarını at */
-function dedupeAmazonUrls(urls: string[]): string[] {
+function dedupeAmazonUrls(urls: string[], userInput?: string): string[] {
+  const filterAccessorySlug = userInput && userLikelyWantsMainAppliance(userInput);
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of urls) {
     const u = raw.split("?")[0];
     const a = asinFromProductUrl(u);
     if (!a) continue;
+    if (filterAccessorySlug && urlSlugIsAccessory(u)) continue;
     let host = "";
     try {
       host = new URL(u).hostname.toLowerCase();
@@ -130,11 +181,25 @@ async function tavilySearchBody(body: Record<string, unknown>): Promise<{ result
   return (await res.json()) as { results?: TavilyHit[] };
 }
 
-/** Kullanıcı muhtemelen ana cihaz istiyor (aksesuar anahtar kelimesi yok) */
+/** Kullanıcı muhtemelen ana cihaz istiyor (aksesuar / yedek parça anahtar kelimesi yok) */
 function userLikelyWantsMainAppliance(userInput: string): boolean {
-  return !/\b(aksesuar|başlık|filtre|yedek|hortum|boru|mop|fırça başlığı|şarj istasyonu|battery|kılıf|case only)\b/i.test(
-    userInput
-  );
+  const q = userInput.toLowerCase();
+  if (
+    /\b(aksesuar|başlık|filtre|yedek|hortum|boru|mop|fırça başlığı|şarj istasyonu|battery|kılıf|kilif|case only)\b/i.test(
+      q
+    )
+  ) {
+    return false;
+  }
+  if (
+    /\b(phone case|iphone case|wallet case|screen protector|ekran koruyucu|tempered glass|şarj kablosu|charging cable|folio|magsafe)\b/i.test(
+      q
+    )
+  ) {
+    return false;
+  }
+  if (/\bcases?\b/.test(q) || /\bcover\b/.test(q) || /\bwallet\b/.test(q)) return false;
+  return true;
 }
 
 /**
@@ -150,6 +215,12 @@ function scoreTavilyHitForQuery(userQuery: string, hit: TavilyHit): number {
   let s = Number.isFinite(rawScore) ? Math.min(22, Math.max(0, rawScore * 22)) : 8;
 
   if (!userLikelyWantsMainAppliance(userQuery)) return s;
+
+  const u = hit.url?.split("?")[0] ?? "";
+  if (u && urlSlugIsAccessory(u)) s -= 65;
+  if (/\biphone\b|\bgalaxy\s*s\d\d?\b|\bgoogle\s*pixel\b|\bpixel\b/i.test(q)) {
+    if (/\b(wallet case|phone case|kılıf|kilif|flip cover|folio|screen protector)\b/.test(hay)) s -= 42;
+  }
 
   const accessoryCue =
     /\b(ile uyumlu|uyumludur|uyumlu ile|for dyson|compatible with|i̇le uyumlu|için uygun|replacement|yedek parça|aksesuar|accessory\b|zemin aracı|zemın aracı|floor tool|floor head|brush head|sadece başlık|başlığı)\b/i.test(
@@ -219,6 +290,7 @@ async function tavilyCollectAmazonUrls(searchPart: string, rawInput: string): Pr
       const clean = u.split("?")[0];
       const a = asinFromProductUrl(clean);
       if (!a) continue;
+      if (userLikelyWantsMainAppliance(rawInput) && urlSlugIsAccessory(clean)) continue;
       const sc = scoreTavilyHitForQuery(rawInput.trim() || searchPart, r);
       const prev = best.get(a);
       if (!prev || sc > prev.score) best.set(a, { url: clean, score: sc });
@@ -262,22 +334,54 @@ async function tavilyCollectAmazonUrls(searchPart: string, rawInput: string): Pr
 /** Scrape edilen sayfa, kullanıcının aradığı ana cihaz gibi görünmüyorsa (aksesuar tuzağı) */
 function listingProbablyAccessoryMismatch(userInput: string, s: ScrapedAmazonPayload): boolean {
   if (!userLikelyWantsMainAppliance(userInput)) return false;
+
+  const titleLower = s.title.toLowerCase();
+  const titleIsAccessory = /\b(kılıf|kilif|wallet\s*case|\bcases?\b|flip\s*cover|book\s*cover|screen protector|ekran koruyucu|tempered glass|phone case|folio|magsafe)\b/i.test(
+    titleLower
+  );
+  if (titleIsAccessory) return true;
+
+  if (userLikelyWantsMainAppliance(userInput) && urlSlugIsAccessory(s.sourceUrl)) return true;
+
   const hay = `${s.title}\n${s.breadcrumb}\n${s.markdownExcerpt.slice(0, 6000)}`.toLowerCase();
   const accessoryCue =
-    /\b(ile uyumlu|uyumludur|for dyson|compatible with|i̇le uyumlu|replacement|yedek parça|aksesuar|accessory\b|zemin aracı|zemın aracı|floor tool|brush head)\b/i.test(
+    /\b(ile uyumlu|uyumludur|for dyson|compatible with|i̇le uyumlu|replacement|yedek parça|aksesuar|accessory\b|zemin aracı|zemın aracı|floor tool|brush head|wallet case|phone case|for iphone|for samsung|for pixel)\b/i.test(
       hay
     );
-  const mainApplianceCue =
+  const mainDeviceCue =
     /\b(elektrikli süpürge|kablosuz süpürge|şarjlı süpürge|cordless vacuum|stick vacuum|dikey süpürge)\b/i.test(
       hay
-    ) || /\bdyson\b.*\bv\s*15\b.*\b(detect|absolute|outsize|animal)\b/i.test(hay);
+    ) ||
+    /\bdyson\b.*\bv\s*15\b.*\b(detect|absolute|outsize|animal)\b/i.test(hay) ||
+    /\b(akıllı telefon|smartphone|tablet|laptop|dizüstü|macbook|airpods|kulaklık|headphones)\b/i.test(hay) ||
+    /\biphone\b(?!.{0,40}\bcase\b)/i.test(hay) ||
+    /\bgalaxy\s*s\d\d?\b(?!.{0,40}\bcase\b)/i.test(hay) ||
+    /\bgoogle\s*pixel\s*\d\b(?!.{0,40}\bcase\b)/i.test(hay);
 
   const q = userInput.toLowerCase();
   const words = q.split(/\s+/).filter(Boolean).length;
   if (/\bdyson\b/i.test(q) && /\bv\s*15|v15\b/i.test(q)) {
-    return accessoryCue && !mainApplianceCue;
+    return accessoryCue && !mainDeviceCue;
   }
-  return accessoryCue && !mainApplianceCue && words <= 5;
+  if (/\biphone\b|\bgalaxy\b|\bpixel\b/i.test(q)) {
+    return accessoryCue && !mainDeviceCue;
+  }
+  return accessoryCue && !mainDeviceCue && words <= 6;
+}
+
+/** Henüz resmi satışı olmayan / spekülatif model — pipeline erken çıkar (Claude’a sorma) */
+function detectUnavailableProduct(userInput: string): string | null {
+  const q = userInput.toLowerCase();
+  if (/\biphone\s*17\b/i.test(q)) {
+    return "iPhone 17 serisi henüz küresel olarak piyasaya çıkmadı (veya çok sınırlı). Analiz için iPhone 16 / 16 Pro gibi mevcut bir model yazabilir veya çıktıktan sonra tekrar deneyebilirsin.";
+  }
+  if (/\bgalaxy\s*s26\b/i.test(q)) {
+    return "Samsung Galaxy S26 henüz duyurulmadı / satışta değil. Galaxy S25 veya S24 serisi ile dene.";
+  }
+  if (/\bpixel\s*10\b/i.test(q)) {
+    return "Google Pixel 10 henüz satışta değil. Pixel 9 veya Pixel 8 serisi ile dene.";
+  }
+  return null;
 }
 
 /** Amazon başlığı veya kullanıcı sorgusu — web araştırması anchor’u */
@@ -439,7 +543,7 @@ export async function resolveAmazonProductPageUrls(userInput: string): Promise<s
     }
   }
 
-  return dedupeAmazonUrls(collected).slice(0, 14);
+  return dedupeAmazonUrls(collected, raw).slice(0, 14);
 }
 
 /** @deprecated Tek URL — resolveAmazonProductPageUrls kullan */
@@ -912,6 +1016,9 @@ export async function runWorthitPipeline(productName: string): Promise<{
 }> {
   const trimmed = productName.trim();
   if (!trimmed) throw new Error("Ürün adı gerekli.");
+
+  const unavailableMsg = detectUnavailableProduct(trimmed);
+  if (unavailableMsg) throw new Error(unavailableMsg);
 
   const urls = await resolveAmazonProductPageUrls(trimmed);
   const errors: string[] = [];

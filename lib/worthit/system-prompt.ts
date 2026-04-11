@@ -13,6 +13,9 @@ Kullanıcı mesajında her zaman: ürün adı, Amazon başlık/kategori/puan/yor
 Mesajda "Tavily ile çekilen ek web pasajları" bölümü varsa: bunlar Amazon dışı sitelerden (ör. Şikayetvar, Reddit, RTINGS/Notebookcheck, TR forum) gelen kısaltılmış arama özetleridir; master prompttaki kaynak ağırlıklarına göre değerlendir. Yalnızca bu pasajlarda veya Amazon metninde açıkça geçen iddiaları kullan; rakam, test sonucu veya siteye özel iddia uydurma. Ek pasajları kullandıysan data_integrity.sources_analyzed içinde tam URL’leri listele; total_sources_count ile tutarlı olsun. Pasaj yoksa veya çok zayıfsa confidence düşük kalmalıdır.
 fake_review_signal, last_90_days, kronik sorun alanlarını yalnızca iletilen metinden çıkarılabildiği ölçüde doldur.
 
+Kullanıcı bir ana cihaz (telefon, kulaklık, süpürge vb.) soruyorsa ve Amazon başlığı/markdown’u açıkça aksesuar (kılıf, wallet case, şarj, kablo, ekran koruyucu vb.) ise: scrape edilen ürün kullanıcının aradığı ana ürün değildir. verdict: SKIP, data_integrity.confidence: INSUFFICIENT_DATA; verdict_reason’da bunu net yaz; skorları uydurarak şişirme.
+Henüz resmen satılmayan veya sadece spekülasyon olan model adları için hayali test/yorum üretme; backend bazen bu sorguları reddedebilir — yine de metin tutarsızsa aynı şekilde SKIP + INSUFFICIENT_DATA kullan.
+
 ÇIKTI: Sadece geçerli JSON (tek obje). Markdown code fence yok. Önce/sonra açıklama yok.
 `;
 
