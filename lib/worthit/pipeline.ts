@@ -1273,10 +1273,24 @@ export async function runWorthitPipeline(productName: string): Promise<{
 
   const t0 = performance.now();
   const skipExist = shouldSkipWebExistenceHints(trimmed);
-  const [urls, webExistenceNote] = await Promise.all([
-    resolveAmazonProductPageUrls(trimmed),
-    skipExist ? Promise.resolve(null as string | null) : tavilyWebExistenceHints(trimmed),
-  ]);
+
+  const urlsP = (async () => {
+    const t = performance.now();
+    const u = await resolveAmazonProductPageUrls(trimmed);
+    pipelineLog("resolve_urls", performance.now() - t, { url_count: u.length });
+    return u;
+  })();
+
+  const hintsP = skipExist
+    ? Promise.resolve(null as string | null)
+    : (async () => {
+        const t = performance.now();
+        const h = await tavilyWebExistenceHints(trimmed);
+        pipelineLog("web_existence_hints", performance.now() - t, { has_hint: Boolean(h) });
+        return h;
+      })();
+
+  const [urls, webExistenceNote] = await Promise.all([urlsP, hintsP]);
   pipelineLog("resolve_urls_and_existence", performance.now() - t0, {
     skip_existence_hints: skipExist,
     url_candidates: urls.length,
@@ -1287,25 +1301,53 @@ export async function runWorthitPipeline(productName: string): Promise<{
   for (const amazonUrl of urls) {
     try {
       const ru = reviewsUrlFromProductUrl(amazonUrl);
-      const tFc = performance.now();
-      const mainP = firecrawlScrapeAmazonPage(amazonUrl, true);
-      const reviewsP = ru
-        ? firecrawlScrapeAmazonPage(ru, false).catch(() => ({ markdown: "", quality: -1 }))
-        : Promise.resolve({ markdown: "", quality: -1 });
+      const tFcParallel = performance.now();
 
-      const mainRes = await mainP;
-      pipelineLog("firecrawl_main", performance.now() - tFc, { amazon_host: hostnameOf(amazonUrl) });
+      const reviewsP =
+        ru != null
+          ? (async () => {
+              const tRev = performance.now();
+              try {
+                const r = await firecrawlScrapeAmazonPage(ru, false);
+                pipelineLog("firecrawl_reviews", performance.now() - tRev, {
+                  amazon_host: hostnameOf(ru),
+                  quality: r.quality,
+                });
+                return r;
+              } catch {
+                pipelineLog("firecrawl_reviews", performance.now() - tRev, {
+                  amazon_host: hostnameOf(ru),
+                  failed: true,
+                });
+                return { markdown: "", quality: -1 };
+              }
+            })()
+          : Promise.resolve({ markdown: "", quality: -1 });
+
+      const mainRes = await firecrawlScrapeAmazonPage(amazonUrl, true);
+      pipelineLog("firecrawl_main", performance.now() - tFcParallel, {
+        amazon_host: hostnameOf(amazonUrl),
+        quality: mainRes.quality,
+      });
 
       const { markdown: mainMd, quality } = mainRes;
       assertUsableAmazonMain(mainMd, quality);
       const scrapingNote = scrapingNoteForAmazonQuality(quality);
 
       const titleForResearch = parseTitle(mainMd);
-      const supplementalP = fetchSupplementalResearch(trimmed, titleForResearch);
+      const tSupp = performance.now();
+      const supplementalP = fetchSupplementalResearch(trimmed, titleForResearch).then((res) => {
+        pipelineLog("supplemental_research", performance.now() - tSupp, {
+          has_data: res.block.length > 0,
+        });
+        return res;
+      });
 
-      const tRv = performance.now();
+      const tParallel2 = performance.now();
       const [reviewsRes, supplementalRes] = await Promise.all([reviewsP, supplementalP]);
-      pipelineLog("reviews_and_supplemental", performance.now() - tRv);
+      pipelineLog("reviews_and_supplemental", performance.now() - tParallel2, {
+        note: "wall_clock_parallel_reviews_plus_supplemental",
+      });
 
       let reviewsMd = "";
       if (reviewsRes.markdown && !amazonMarkdownHardBlocked(reviewsRes.markdown)) {
@@ -1315,6 +1357,10 @@ export async function runWorthitPipeline(productName: string): Promise<{
       const scraped = buildScrapedAmazonPayload(amazonUrl, mainMd, reviewsMd, scrapingNote);
 
       if (listingProbablyAccessoryMismatch(trimmed, scraped)) {
+        pipelineLog("accessory_mismatch_skip", 0, {
+          url: amazonUrl,
+          title: scraped.title.slice(0, 200),
+        });
         errors.push(
           "Liste muhtemelen ana cihaz değil (uyumlu aksesuar / yanıltıcı başlık); sıradaki sonuç deneniyor."
         );
@@ -1328,11 +1374,24 @@ export async function runWorthitPipeline(productName: string): Promise<{
         supplementalRes.block || undefined,
         webExistenceNote ?? undefined
       );
-      pipelineLog("claude_total", performance.now() - tClaude);
-      pipelineLog("pipeline_success", performance.now() - t0, { amazonUrl });
+      pipelineLog("claude_total", performance.now() - tClaude, {
+        verdict: report.verdict,
+        overall_score: report.overall_score,
+        confidence: report.data_integrity.confidence,
+      });
+      pipelineLog("pipeline_total", performance.now() - t0, {
+        amazonUrl,
+        verdict: report.verdict,
+        score: report.overall_score,
+      });
       return { amazonUrl, report };
     } catch (e) {
-      errors.push(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      pipelineLog("pipeline_attempt_error", performance.now() - t0, {
+        url: amazonUrl,
+        error: msg.slice(0, 200),
+      });
+      errors.push(msg);
     }
   }
 
