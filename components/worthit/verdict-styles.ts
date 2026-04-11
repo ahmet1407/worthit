@@ -1,35 +1,45 @@
 import type { Verdict } from "@/lib/worthit/types";
 
-export function verdictBadgeClass(v: Verdict): string {
-  switch (v) {
-    case "BUY":
-      return "bg-emerald-500/15 text-emerald-800 ring-1 ring-emerald-500/40";
-    case "WAIT":
-      return "bg-amber-500/15 text-amber-900 ring-1 ring-amber-500/40";
-    case "SKIP":
-      return "bg-red-500/15 text-red-800 ring-1 ring-red-500/40";
-    default:
-      return "bg-slate-100 text-slate-800 ring-1 ring-slate-300";
-  }
-}
-
-export function normalizeVerdict(raw: string): Verdict {
-  const t = raw.replace(/\s/g, "").toUpperCase();
-  if (t.includes("BUY")) return "BUY";
-  if (t.includes("WAIT")) return "WAIT";
-  if (t.includes("SKIP")) return "SKIP";
+export function normalizeVerdict(v: string): Verdict {
+  const upper = v?.toUpperCase();
+  if (upper === "BUY" || upper === "WAIT" || upper === "SKIP") return upper as Verdict;
   return "WAIT";
 }
 
-export function ringAccentForVerdict(v: Verdict): { from: string; to: string } {
-  switch (v) {
+export function verdictConfig(verdict: Verdict) {
+  switch (verdict) {
     case "BUY":
-      return { from: "#10b981", to: "#059669" };
-    case "WAIT":
-      return { from: "#f59e0b", to: "#d97706" };
+      return {
+        label: "AL",
+        color: "#a3e635",
+        bg: "bg-[#a3e635]/10",
+        border: "border-[#a3e635]/20",
+        text: "text-[#a3e635]",
+        glow: "shadow-[0_0_60px_rgba(163,230,53,0.08)]",
+      };
     case "SKIP":
-      return { from: "#ef4444", to: "#dc2626" };
+      return {
+        label: "ALMA",
+        color: "#f87171",
+        bg: "bg-red-500/10",
+        border: "border-red-500/20",
+        text: "text-red-400",
+        glow: "shadow-[0_0_60px_rgba(248,113,113,0.08)]",
+      };
+    case "WAIT":
     default:
-      return { from: "#6366f1", to: "#8b5cf6" };
+      return {
+        label: "BEKLE",
+        color: "#fbbf24",
+        bg: "bg-amber-500/10",
+        border: "border-amber-500/20",
+        text: "text-amber-400",
+        glow: "shadow-[0_0_60px_rgba(251,191,36,0.08)]",
+      };
   }
+}
+
+export function verdictBadgeClass(verdict: Verdict): string {
+  const c = verdictConfig(verdict);
+  return `${c.bg} ${c.border} border ${c.text}`;
 }

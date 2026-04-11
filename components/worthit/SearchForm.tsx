@@ -10,35 +10,25 @@ type Props = {
 export function SearchForm({ query, onQueryChange, onSubmit, loading }: Props) {
   return (
     <form
-      className="mx-auto flex w-full max-w-xl flex-col gap-3 sm:flex-row sm:items-stretch"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSubmit();
-      }}
+      onSubmit={(e) => { e.preventDefault(); if (!loading && query.trim()) onSubmit(); }}
     >
-      <label htmlFor="product-search" className="sr-only">
-        Ürün adı
-      </label>
-      <input
-        id="product-search"
-        type="search"
-        enterKeyHint="search"
-        value={query}
-        onChange={(e) => onQueryChange(e.target.value)}
-        placeholder="Örn. Dyson V15, Sony WH-1000XM5…"
-        className="min-h-12 flex-1 rounded-2xl border border-slate-200/90 bg-white/90 px-4 py-3 text-base text-slate-900 shadow-sm outline-none ring-slate-200/80 backdrop-blur-sm placeholder:text-slate-400 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/20"
-        disabled={loading}
-        autoComplete="off"
-        autoCorrect="off"
-        spellCheck={false}
-      />
-      <button
-        type="submit"
-        disabled={loading || !query.trim()}
-        className="min-h-12 shrink-0 rounded-2xl bg-slate-900 px-8 py-3 text-base font-semibold text-white shadow-md transition hover:bg-slate-800 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45"
-      >
-        {loading ? "Analiz ediliyor…" : "Skorla"}
-      </button>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          placeholder="Ürün adı veya Amazon linki..."
+          disabled={loading}
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-5 py-4 text-base text-white placeholder-white/25 outline-none transition-all focus:border-[#a3e635]/60 focus:bg-white/8 focus:ring-1 focus:ring-[#a3e635]/30 disabled:opacity-50"
+        />
+        <button
+          type="submit"
+          disabled={loading || !query.trim()}
+          className="rounded-xl bg-[#a3e635] px-6 py-4 text-sm font-bold text-black transition-all hover:bg-[#bef264] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+        >
+          {loading ? "..." : "Analiz et"}
+        </button>
+      </div>
     </form>
   );
 }

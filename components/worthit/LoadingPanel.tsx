@@ -3,38 +3,28 @@
 type Props = { message: string; step: number; total: number };
 
 export function LoadingPanel({ message, step, total }: Props) {
-  const pct = Math.round(((step + 1) / total) * 100);
+  const progress = total > 0 ? Math.round((step / total) * 100) : 0;
   return (
-    <div
-      className="mx-auto w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 p-8 shadow-lg shadow-slate-200/40 backdrop-blur-md"
-      role="status"
-      aria-live="polite"
-      aria-busy="true"
-    >
-      <div className="flex items-center gap-4">
+    <div className="rounded-2xl border border-white/8 bg-white/3 p-8">
+      <div className="mb-6 h-0.5 w-full overflow-hidden rounded-full bg-white/8">
         <div
-          className="relative h-12 w-12 shrink-0"
-          aria-hidden
-        >
-          <div className="absolute inset-0 rounded-full border-2 border-slate-200" />
-          <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-indigo-600" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-slate-900">{message}</p>
-          <p className="mt-1 text-xs text-slate-500">
-            Bu işlem birkaç dakika sürebilir. Sekmeyi kapatmayın.
-          </p>
-        </div>
-      </div>
-      <div className="mt-6 h-1.5 overflow-hidden rounded-full bg-slate-100">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-[width] duration-500 ease-out"
-          style={{ width: `${pct}%` }}
+          className="h-full rounded-full bg-[#a3e635] transition-all duration-500"
+          style={{ width: `${progress}%` }}
         />
       </div>
-      <p className="mt-2 text-right text-[10px] font-medium uppercase tracking-wider text-slate-400">
-        Adım {step + 1} / {total}
-      </p>
+      <div className="flex items-center gap-4">
+        <div className="relative h-8 w-8 shrink-0">
+          <div className="absolute inset-0 rounded-full border-2 border-white/8" />
+          <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-[#a3e635]" />
+        </div>
+        <div>
+          <p className="text-sm font-medium text-white/80">{message}</p>
+          <p className="mt-0.5 text-xs text-white/30">Adım {step} / {total} · Birkaç dakika sürebilir</p>
+        </div>
+        <div className="ml-auto text-2xl font-black tabular-nums text-white/15">
+          {progress}<span className="text-sm">%</span>
+        </div>
+      </div>
     </div>
   );
 }

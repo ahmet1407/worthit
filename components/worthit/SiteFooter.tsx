@@ -1,11 +1,13 @@
 export function SiteFooter() {
   return (
-    <footer className="mt-20 border-t border-slate-200/80 bg-white/40 py-10 text-center text-xs text-slate-500 backdrop-blur-sm">
-      <p className="mx-auto max-w-md leading-relaxed">
-        Worthit, Amazon listeleri ve yapay zeka ile özet üretir; yatırım tavsiyesi değildir. Satın almadan önce
-        fiyat ve garantiyi kendi kontrol edin.
-      </p>
-      <p className="mt-4 text-slate-400">© {new Date().getFullYear()} Worthit</p>
+    <footer className="border-t border-white/5 py-8">
+      <div className="mx-auto max-w-2xl px-4 sm:px-6">
+        <p className="text-center text-xs text-white/15 leading-relaxed">
+          Worthit, Amazon listeleri ve yapay zeka ile özet üretir · Yatırım tavsiyesi değildir<br />
+          Satın almadan önce fiyat ve garantiyi kendi kontrol edin
+        </p>
+        <p className="mt-3 text-center text-xs text-white/10">© 2026 Worthit</p>
+      </div>
     </footer>
   );
 }
