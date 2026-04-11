@@ -97,4 +97,6 @@ export interface ScrapedAmazonPayload {
   lowestReviewsText: string;
   markdownExcerpt: string;
   sourceUrl: string;
+  /** İçerik zayıfsa Claude'a uyarı */
+  scrapingNote?: string;
 }

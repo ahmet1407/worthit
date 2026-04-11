@@ -14,8 +14,17 @@ function coerceVerdict(v: unknown): Verdict {
 
 const AMAZON_URL_RE = /https?:\/\/(?:www\.)?amazon\.(?:com|co\.uk|de|fr|es|it|nl|se|pl|com\.tr|ca|com\.au|in|co\.jp|sg|ae|sa|mx|br)\/(?:[\w-]+\/)?(?:dp|gp\/product)\/([A-Z0-9]{10})/i;
 
+function sortResultsPreferAmazonTr<T extends { url?: string }>(results: T[]): T[] {
+  return [...results].sort((a, b) => {
+    const sa = a.url?.includes("amazon.com.tr") ? 0 : 1;
+    const sb = b.url?.includes("amazon.com.tr") ? 0 : 1;
+    return sa - sb;
+  });
+}
+
 export function pickFirstAmazonProductUrl(results: { url?: string }[]): string | null {
-  for (const r of results) {
+  const ordered = sortResultsPreferAmazonTr(results);
+  for (const r of ordered) {
     const u = r.url;
     if (!u) continue;
     if (AMAZON_URL_RE.test(u) && !u.includes("/browse") && !u.includes("/stores")) {
@@ -25,31 +34,182 @@ export function pickFirstAmazonProductUrl(results: { url?: string }[]): string |
   return null;
 }
 
-export async function tavilySearchAmazon(productName: string): Promise<string> {
+function asinFromProductUrl(u: string): string | null {
+  const m = u.match(/(?:dp|gp\/product)\/([A-Z0-9]{10})/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
+function urlsForAsin(asin: string): string[] {
+  return [
+    `https://www.amazon.com.tr/dp/${asin}`,
+    `https://www.amazon.com/dp/${asin}`,
+    `https://www.amazon.co.uk/dp/${asin}`,
+    `https://www.amazon.de/dp/${asin}`,
+  ];
+}
+
+function cleanAmazonUrl(raw: string): string {
+  try {
+    const u = new URL(raw.trim().split(/\s/)[0].split("?")[0]);
+    if (!AMAZON_URL_RE.test(u.href)) return raw.trim();
+    return `${u.origin}${u.pathname}`.replace(/\/$/, "");
+  } catch {
+    return raw.trim();
+  }
+}
+
+/** Metinde yapıştırılmış Amazon linki */
+function extractPastedAmazonUrl(text: string): string | null {
+  const m = text.match(/https?:\/\/(?:www\.)?amazon\.[a-z.]+\/(?:[\w-]+\/)?(?:dp|gp\/product)\/[A-Z0-9]{10}/i);
+  return m ? cleanAmazonUrl(m[0]) : null;
+}
+
+/** Sadece ASIN veya metin içinde ASIN */
+function extractAsinFromUserQuery(q: string): string | null {
+  const pasted = extractPastedAmazonUrl(q);
+  if (pasted) return asinFromProductUrl(pasted);
+  const compact = q.replace(/\s/g, "");
+  if (/^[A-Z0-9]{10}$/i.test(compact)) return compact.toUpperCase();
+  const bm = q.match(/\b(B[0-9A-Z]{9})\b/i);
+  if (bm) return bm[1]!.toUpperCase();
+  return null;
+}
+
+function simplifyProductQuery(q: string): string {
+  const noUrl = q.replace(/https?:\/\/\S+/gi, " ").trim();
+  // Harf/rakam: ASCII + Türkçe + yaygın Latin uzantıları (\p{L}\p{N} yerine — eski TS hedefiyle uyumlu)
+  const s = noUrl
+    .replace(/[^a-zA-Z0-9ĞğÜüŞşİıÖöÇç\u00C0-\u024F\u0400-\u04FF\s+-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (s.length >= 3 ? s : noUrl).slice(0, 140);
+}
+
+/** Aynı ASIN’in farklı ülke mağazalarını koru; yalnızca (asin|host) tekrarını at */
+function dedupeAmazonUrls(urls: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of urls) {
+    const u = raw.split("?")[0];
+    const a = asinFromProductUrl(u);
+    if (!a) continue;
+    let host = "";
+    try {
+      host = new URL(u).hostname.toLowerCase();
+    } catch {
+      continue;
+    }
+    const key = `${a}|${host}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(u);
+  }
+  return out;
+}
+
+async function tavilySearchBody(body: Record<string, unknown>): Promise<{ results?: { url: string }[] }> {
   const key = process.env.TAVILY_API_KEY;
   if (!key) throw new Error("TAVILY_API_KEY eksik");
-
   const res = await fetch("https://api.tavily.com/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       api_key: key,
-      query: `${productName} site:amazon.com OR site:amazon.co.uk OR site:amazon.com.tr`,
       search_depth: "advanced",
-      max_results: 12,
+      max_results: 20,
       include_answer: false,
+      ...body,
     }),
   });
-
   if (!res.ok) {
     const t = await res.text();
     throw new Error(`Tavily hatası: ${res.status} ${t}`);
   }
+  return (await res.json()) as { results?: { url: string }[] };
+}
 
-  const data = (await res.json()) as { results?: { url: string; title?: string }[] };
-  const url = pickFirstAmazonProductUrl(data.results ?? []);
-  if (!url) throw new Error("Amazon ürün URL’si bulunamadı. Farklı bir arama deneyin.");
-  return url;
+async function tavilyCollectAmazonUrls(searchQuery: string): Promise<string[]> {
+  const q = searchQuery.trim();
+  const simple = simplifyProductQuery(q);
+  const strategies: Record<string, unknown>[] = [
+    { query: q, include_domains: ["amazon.com.tr"] },
+    { query: `${q} alışveriş`, include_domains: ["amazon.com.tr"] },
+    { query: `${q} site:amazon.com.tr` },
+    { query: `${q} site:amazon.com OR site:amazon.com.tr OR site:amazon.co.uk` },
+    { query: simple !== q ? simple : `${q} amazon`, include_domains: ["amazon.com.tr"] },
+    { query: `${simple} amazon dp`, max_results: 15 },
+    { query: `${simple} buy amazon`, max_results: 15 },
+  ];
+
+  const found = new Map<string, string>();
+  for (const s of strategies) {
+    try {
+      const data = await tavilySearchBody(s);
+      for (const r of sortResultsPreferAmazonTr(data.results ?? [])) {
+        const u = r.url;
+        if (!u || !AMAZON_URL_RE.test(u)) continue;
+        if (u.includes("/browse") || u.includes("/stores") || u.includes("/gp/browse")) continue;
+        const clean = u.split("?")[0];
+        const a = asinFromProductUrl(clean);
+        if (a && !found.has(a)) found.set(a, clean);
+      }
+      if (found.size >= 4) break;
+    } catch {
+      /* sonraki strateji */
+    }
+  }
+
+  const list = sortResultsPreferAmazonTr(Array.from(found.values(), (url) => ({ url }))).map((x) => x.url!);
+  return list;
+}
+
+/** Tavily + yapıştırılan URL/ASIN + bölge varyantları — sırayla dene */
+export async function resolveAmazonProductPageUrls(userInput: string): Promise<string[]> {
+  const raw = userInput.trim();
+  const collected: string[] = [];
+
+  const pasted = extractPastedAmazonUrl(raw);
+  if (pasted) collected.push(pasted);
+
+  const asinOnly = extractAsinFromUserQuery(raw);
+  if (asinOnly && !pasted) {
+    for (const u of urlsForAsin(asinOnly)) {
+      collected.push(u);
+    }
+  }
+
+  const searchPart = simplifyProductQuery(raw) || raw;
+  let tavilyUrls: string[] = [];
+  try {
+    tavilyUrls = await tavilyCollectAmazonUrls(searchPart);
+  } catch {
+    tavilyUrls = [];
+  }
+
+  for (const u of tavilyUrls) {
+    if (!collected.includes(u)) collected.push(u);
+  }
+
+  if (collected.length === 0) {
+    throw new Error(
+      "Amazon ürün linki bulunamadı. Tam ürün adı, yapıştırılmış Amazon URL’si veya B0… ile başlayan ASIN dene."
+    );
+  }
+
+  const firstAsin = asinFromProductUrl(collected[0]!);
+  if (firstAsin) {
+    for (const u of urlsForAsin(firstAsin)) {
+      if (!collected.includes(u)) collected.push(u);
+    }
+  }
+
+  return dedupeAmazonUrls(collected).slice(0, 14);
+}
+
+/** @deprecated Tek URL — resolveAmazonProductPageUrls kullan */
+export async function tavilySearchAmazon(productName: string): Promise<string> {
+  const urls = await resolveAmazonProductPageUrls(productName);
+  return urls[0]!;
 }
 
 function extractAsin(url: string): string | null {
@@ -57,10 +217,39 @@ function extractAsin(url: string): string | null {
   return m ? m[1] : null;
 }
 
-async function firecrawlScrapeUrl(url: string): Promise<string> {
-  const key = process.env.FIRECRAWL_API_KEY;
-  if (!key) throw new Error("FIRECRAWL_API_KEY eksik");
+function isAmazonHost(url: string): boolean {
+  try {
+    return /amazon\./i.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
 
+/** İçerik kalitesi: yüksek = ürün sayfası ihtimali */
+function scoreAmazonMarkdownQuality(markdown: string): number {
+  const t = markdown.trim();
+  let s = 0;
+  s += Math.min(35, Math.floor(t.length / 400));
+  if (/out of 5|out of five|von 5|Sternen|yıldız|stars?|ratings?|global ratings|değerlendirme|müşteri yorumu/i.test(t))
+    s += 28;
+  if (/₺|\$|€|£|EUR|GBP|TRY|Sepete|Sepete Ekle|Add to Cart|add-to-cart|Buy Now|ürün detayı|product details|customer reviews|See all reviews/i.test(t))
+    s += 22;
+  if (/robot check|Robot Check|Type the characters|Enter the characters|automated access|Sorry, we just need to make sure|Bir robot olmadığınızı doğrulayın|captcha/i.test(t))
+    s -= 45;
+  return s;
+}
+
+function amazonMarkdownHardBlocked(markdown: string): boolean {
+  const t = markdown.trim();
+  if (t.length < 120) return true;
+  const block =
+    /robot check|Robot Check|Type the characters|Enter the characters|Bir robot olmadığınızı doğrulayın/i.test(t);
+  const productLike =
+    /out of 5|yıldız|stars?|ratings?|Sepete|Add to Cart|customer review|ürün/i.test(t);
+  return block && !productLike;
+}
+
+async function firecrawlFetchMarkdown(key: string, payload: Record<string, unknown>): Promise<string> {
   const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
     method: "POST",
     headers: {
@@ -68,10 +257,9 @@ async function firecrawlScrapeUrl(url: string): Promise<string> {
       Authorization: `Bearer ${key}`,
     },
     body: JSON.stringify({
-      url,
       formats: ["markdown"],
-      onlyMainContent: true,
       timeout: 120000,
+      ...payload,
     }),
   });
 
@@ -90,6 +278,69 @@ async function firecrawlScrapeUrl(url: string): Promise<string> {
   const md = json.data?.markdown ?? json.data?.content ?? "";
   if (!md.trim()) throw new Error("Firecrawl boş içerik döndü.");
   return md;
+}
+
+/** Birden fazla parametre setiyle dene; en iyi markdown’u döndür */
+async function firecrawlScrapeAmazonPage(url: string, thorough: boolean): Promise<{ markdown: string; quality: number }> {
+  const key = process.env.FIRECRAWL_API_KEY;
+  if (!key) throw new Error("FIRECRAWL_API_KEY eksik");
+
+  if (!isAmazonHost(url)) {
+    const md = await firecrawlFetchMarkdown(key, { url, onlyMainContent: true });
+    return { markdown: md, quality: scoreAmazonMarkdownQuality(md) };
+  }
+
+  const tr = url.includes("amazon.com.tr");
+  const attempts: Record<string, unknown>[] = [];
+
+  if (tr) {
+    attempts.push({
+      url,
+      onlyMainContent: false,
+      waitFor: 8000,
+      headers: { "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7" },
+    });
+  }
+  attempts.push({ url, onlyMainContent: false, waitFor: thorough ? 7000 : 5000 });
+  attempts.push({ url, onlyMainContent: true, waitFor: thorough ? 6500 : 4500 });
+  attempts.push({
+    url,
+    onlyMainContent: false,
+    waitFor: 5000,
+    mobile: true,
+  });
+  attempts.push({
+    url,
+    onlyMainContent: true,
+    waitFor: 4500,
+    mobile: true,
+  });
+
+  let best = "";
+  let bestQ = -999;
+  for (const extra of attempts) {
+    try {
+      const md = await firecrawlFetchMarkdown(key, extra);
+      const q = scoreAmazonMarkdownQuality(md);
+      if (q > bestQ || (q === bestQ && md.length > best.length)) {
+        bestQ = q;
+        best = md;
+      }
+      if (q >= 38 && !amazonMarkdownHardBlocked(md)) {
+        return { markdown: md, quality: q };
+      }
+    } catch {
+      /* deneme */
+    }
+  }
+
+  if (!best.trim()) throw new Error("Firecrawl bu URL için içerik döndürmedi.");
+  return { markdown: best, quality: bestQ };
+}
+
+async function firecrawlScrapeUrl(url: string): Promise<string> {
+  const { markdown } = await firecrawlScrapeAmazonPage(url, false);
+  return markdown;
 }
 
 /** Pull star rating from common Amazon markdown patterns */
@@ -176,18 +427,34 @@ function reviewsUrlFromProductUrl(productUrl: string): string | null {
 }
 
 export async function scrapeAmazonForWorthit(productUrl: string): Promise<ScrapedAmazonPayload> {
-  const [mainMd, reviewsMd] = await Promise.all([
-    firecrawlScrapeUrl(productUrl),
-    (async () => {
-      const ru = reviewsUrlFromProductUrl(productUrl);
-      if (!ru) return "";
-      try {
-        return await firecrawlScrapeUrl(ru);
-      } catch {
-        return "";
-      }
-    })(),
-  ]);
+  const { markdown: mainMd, quality } = await firecrawlScrapeAmazonPage(productUrl, true);
+
+  if (amazonMarkdownHardBlocked(mainMd)) {
+    throw new Error("Bu Amazon URL’si bot koruması veya boş yanıt döndürdü.");
+  }
+
+  let scrapingNote: string | undefined;
+  if (quality < 18 && mainMd.trim().length < 900) {
+    throw new Error("Sayfa içeriği çok kısa; başka bölge linki deneniyor.");
+  }
+  if (quality < 28) {
+    scrapingNote =
+      "NOT (otomatik): Ürün sayfası kısmen okunabildi. Yalnızca aşağıdaki ham metne dayan; eksik alanları tahmin etme, confidence düşür.";
+  } else if (quality < 40) {
+    scrapingNote =
+      "NOT (otomatik): Veri orta düzeyde; iddiaları mesajdaki metinle sınırlı tut.";
+  }
+
+  let reviewsMd = "";
+  const ru = reviewsUrlFromProductUrl(productUrl);
+  if (ru) {
+    try {
+      const { markdown } = await firecrawlScrapeAmazonPage(ru, false);
+      if (!amazonMarkdownHardBlocked(markdown)) reviewsMd = markdown;
+    } catch {
+      reviewsMd = "";
+    }
+  }
 
   const combined = `${mainMd}\n\n---\n\n## Düşük puanlı yorumlar sayfası\n\n${reviewsMd}`;
   const title = parseTitle(mainMd);
@@ -202,7 +469,7 @@ export async function scrapeAmazonForWorthit(productUrl: string): Promise<Scrape
       ? topLow.map((r, i) => `${i + 1}. [${r.stars}★] ${r.text}`).join("\n\n")
       : combined.slice(0, 8000);
 
-  const maxExcerpt = 14_000;
+  const maxExcerpt = 16_000;
   const markdownExcerpt =
     combined.length > maxExcerpt
       ? `${combined.slice(0, maxExcerpt)}\n\n[…içerik kısaltıldı]`
@@ -216,11 +483,13 @@ export async function scrapeAmazonForWorthit(productUrl: string): Promise<Scrape
     lowestReviewsText,
     markdownExcerpt,
     sourceUrl: productUrl,
+    scrapingNote,
   };
 }
 
 function buildUserMessage(productName: string, s: ScrapedAmazonPayload): string {
-  return `Ürün: ${productName}
+  const head = s.scrapingNote ? `${s.scrapingNote}\n\n` : "";
+  return `${head}Ürün: ${productName}
 
 Amazon'dan çekilen veriler:
 - Başlık: ${s.title}
@@ -366,9 +635,21 @@ export async function runWorthitPipeline(productName: string): Promise<{
   const trimmed = productName.trim();
   if (!trimmed) throw new Error("Ürün adı gerekli.");
 
-  const amazonUrl = await tavilySearchAmazon(trimmed);
-  const scraped = await scrapeAmazonForWorthit(amazonUrl);
-  const report = await analyzeWithClaude(trimmed, scraped);
+  const urls = await resolveAmazonProductPageUrls(trimmed);
+  const errors: string[] = [];
 
-  return { amazonUrl, report };
+  for (const amazonUrl of urls) {
+    try {
+      const scraped = await scrapeAmazonForWorthit(amazonUrl);
+      const report = await analyzeWithClaude(trimmed, scraped);
+      return { amazonUrl, report };
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  const hint = errors.length ? errors[Math.min(errors.length - 1, 2)] : "";
+  throw new Error(
+    `Amazon verisi alınamadı (${urls.length} farklı URL denendi). Son hata: ${hint}`.slice(0, 600)
+  );
 }
