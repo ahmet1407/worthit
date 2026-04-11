@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { ErrorAlert } from "@/components/worthit/ErrorAlert";
 import { LoadingPanel } from "@/components/worthit/LoadingPanel";
 import { SearchForm } from "@/components/worthit/SearchForm";
@@ -423,15 +423,6 @@ function Testimonials() {
   );
 }
 
-function LiveCounter() {
-  const [n, setN] = useState(2847);
-  useEffect(() => {
-    const t = setInterval(() => setN((c) => c + Math.floor(Math.random() * 3)), 7000);
-    return () => clearInterval(t);
-  }, []);
-  return <>{n.toLocaleString("tr-TR")}</>;
-}
-
 export default function Home() {
   const {
     query,
@@ -508,18 +499,30 @@ export default function Home() {
         <div className={`mx-auto max-w-2xl px-4 sm:px-6 ${hasResult ? "pt-8" : ""}`}>
           {!hasResult && (
             <div className="flex flex-col items-center pb-14 pt-20 text-center">
-              <div className="anim-1 mb-10 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium text-white/50">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#c8f135] pulse-dot" />
-                <LiveCounter /> analiz yapıldı bu hafta
+              {/* Worthit branding */}
+              <div className="anim-1 mb-6">
+                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-white/30">Ürün Kararı</p>
               </div>
 
               <h1
-                className="anim-2 font-serif italic leading-[1.05] tracking-tight text-white"
-                style={{ fontSize: "clamp(52px,8vw,88px)" }}
+                className="anim-2 mb-2 font-sans"
+                style={{
+                  lineHeight: 1,
+                  letterSpacing: "-0.02em",
+                  fontSize: "clamp(64px,10vw,108px)",
+                }}
               >
-                Bu ürünü
-                <br />
-                <span style={{ color: "#c8f135", textShadow: "0 0 48px rgba(200,241,53,0.25)" }}>almalı mısın?</span>
+                <span style={{ color: "#ffffff", fontWeight: 900 }}>Worth</span>
+                <span
+                  style={{
+                    color: "#c8f135",
+                    fontWeight: 900,
+                    textShadow: "0 0 60px rgba(200,241,53,0.4)",
+                  }}
+                >
+                  it
+                </span>
+                <span style={{ color: "rgba(255,255,255,0.12)", fontWeight: 900 }}>?</span>
               </h1>
 
               <p className="anim-3 mb-12 max-w-md text-lg font-light leading-relaxed text-white/40">
