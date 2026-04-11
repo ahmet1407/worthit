@@ -206,8 +206,6 @@ function tavilyStrategiesForProduct(simple: string, rawInput: string): Record<st
   return [...precision, ...broad];
 }
 
-const TAVILY_AMAZON_BATCH = 5;
-
 async function tavilyCollectAmazonUrls(searchPart: string, rawInput: string): Promise<string[]> {
   const strategies = tavilyStrategiesForProduct(searchPart, rawInput);
   /** ASIN → en iyi skorlu URL */
@@ -227,26 +225,22 @@ async function tavilyCollectAmazonUrls(searchPart: string, rawInput: string): Pr
     }
   }
 
-  /** Önce basic + paralel partiler — duvar saati süresini kısaltır */
-  for (let i = 0; i < strategies.length; i += TAVILY_AMAZON_BATCH) {
-    const batch = strategies.slice(i, i + TAVILY_AMAZON_BATCH);
-    const settled = await Promise.allSettled(
-      batch.map((strat) => {
-        const maxRes = typeof strat.max_results === "number" ? strat.max_results : 12;
-        return tavilySearchBody({
-          ...strat,
-          search_depth: "basic",
-          max_results: Math.min(15, maxRes),
-        });
-      })
-    );
-    for (const r of settled) {
-      if (r.status === "fulfilled") ingestResults(r.value);
-    }
-    if (best.size >= 8) break;
+  /** Tüm stratejileri aynı anda (basic) — duvar saati ≈ tek istek */
+  const basicSettled = await Promise.allSettled(
+    strategies.map((strat) => {
+      const maxRes = typeof strat.max_results === "number" ? strat.max_results : 12;
+      return tavilySearchBody({
+        ...strat,
+        search_depth: "basic",
+        max_results: Math.min(15, maxRes),
+      }).catch(() => ({ results: [] as TavilyHit[] }));
+    })
+  );
+  for (const r of basicSettled) {
+    if (r.status === "fulfilled") ingestResults(r.value);
   }
 
-  /** Hiç ASIN yoksa veya çok az ise advanced ile ilk stratejileri dene */
+  /** ASIN çok azsa advanced yedek (sıralı, sınırlı) */
   if (best.size < 2) {
     for (const strat of strategies.slice(0, 4)) {
       try {
@@ -319,11 +313,11 @@ function isAmazonUrl(u: string): boolean {
  */
 async function fetchSupplementalResearch(
   userQuery: string,
-  scraped: ScrapedAmazonPayload
+  amazonTitle: string
 ): Promise<{ block: string; urls: string[] }> {
   if (!process.env.TAVILY_API_KEY) return { block: "", urls: [] };
 
-  const anchor = shortenResearchAnchor(userQuery, scraped.title);
+  const anchor = shortenResearchAnchor(userQuery, amazonTitle);
   if (anchor.length < 3) return { block: "", urls: [] };
 
   const strategies: Record<string, unknown>[] = [
@@ -676,39 +670,31 @@ function reviewsUrlFromProductUrl(productUrl: string): string | null {
   return `https://${domain}/product-reviews/${asin}/ref=cm_cr_arp_d_viewopt_srt?ie=UTF8&reviewerType=all_reviews&sortBy=helpful&filterByStar=one_star&pageNumber=1`;
 }
 
-export async function scrapeAmazonForWorthit(productUrl: string): Promise<ScrapedAmazonPayload> {
-  const ru = reviewsUrlFromProductUrl(productUrl);
-
-  const [mainRes, reviewsRes] = await Promise.all([
-    firecrawlScrapeAmazonPage(productUrl, true),
-    ru
-      ? firecrawlScrapeAmazonPage(ru, false).catch(() => ({ markdown: "", quality: -1 }))
-      : Promise.resolve({ markdown: "", quality: -1 }),
-  ]);
-
-  const { markdown: mainMd, quality } = mainRes;
-
-  if (amazonMarkdownHardBlocked(mainMd)) {
+function assertUsableAmazonMain(markdown: string, quality: number): void {
+  if (amazonMarkdownHardBlocked(markdown)) {
     throw new Error("Bu Amazon URL’si bot koruması veya boş yanıt döndürdü.");
   }
-
-  let scrapingNote: string | undefined;
-  if (quality < 18 && mainMd.trim().length < 900) {
+  if (quality < 18 && markdown.trim().length < 900) {
     throw new Error("Sayfa içeriği çok kısa; başka bölge linki deneniyor.");
   }
+}
+
+function scrapingNoteForAmazonQuality(quality: number): string | undefined {
   if (quality < 28) {
-    scrapingNote =
-      "NOT (otomatik): Ürün sayfası kısmen okunabildi. Yalnızca aşağıdaki ham metne dayan; eksik alanları tahmin etme, confidence düşür.";
-  } else if (quality < 40) {
-    scrapingNote =
-      "NOT (otomatik): Veri orta düzeyde; iddiaları mesajdaki metinle sınırlı tut.";
+    return "NOT (otomatik): Ürün sayfası kısmen okunabildi. Yalnızca aşağıdaki ham metne dayan; eksik alanları tahmin etme, confidence düşür.";
   }
-
-  let reviewsMd = "";
-  if (reviewsRes.markdown && !amazonMarkdownHardBlocked(reviewsRes.markdown)) {
-    reviewsMd = reviewsRes.markdown;
+  if (quality < 40) {
+    return "NOT (otomatik): Veri orta düzeyde; iddiaları mesajdaki metinle sınırlı tut.";
   }
+  return undefined;
+}
 
+function buildScrapedAmazonPayload(
+  productUrl: string,
+  mainMd: string,
+  reviewsMd: string,
+  scrapingNote?: string
+): ScrapedAmazonPayload {
   const combined = `${mainMd}\n\n---\n\n## Düşük puanlı yorumlar sayfası\n\n${reviewsMd}`;
   const title = parseTitle(mainMd);
   const breadcrumb = parseBreadcrumb(mainMd);
@@ -738,6 +724,28 @@ export async function scrapeAmazonForWorthit(productUrl: string): Promise<Scrape
     sourceUrl: productUrl,
     scrapingNote,
   };
+}
+
+export async function scrapeAmazonForWorthit(productUrl: string): Promise<ScrapedAmazonPayload> {
+  const ru = reviewsUrlFromProductUrl(productUrl);
+
+  const [mainRes, reviewsRes] = await Promise.all([
+    firecrawlScrapeAmazonPage(productUrl, true),
+    ru
+      ? firecrawlScrapeAmazonPage(ru, false).catch(() => ({ markdown: "", quality: -1 }))
+      : Promise.resolve({ markdown: "", quality: -1 }),
+  ]);
+
+  const { markdown: mainMd, quality } = mainRes;
+  assertUsableAmazonMain(mainMd, quality);
+  const scrapingNote = scrapingNoteForAmazonQuality(quality);
+
+  let reviewsMd = "";
+  if (reviewsRes.markdown && !amazonMarkdownHardBlocked(reviewsRes.markdown)) {
+    reviewsMd = reviewsRes.markdown;
+  }
+
+  return buildScrapedAmazonPayload(productUrl, mainMd, reviewsMd, scrapingNote);
 }
 
 function buildUserMessage(
@@ -910,15 +918,41 @@ export async function runWorthitPipeline(productName: string): Promise<{
 
   for (const amazonUrl of urls) {
     try {
-      const scraped = await scrapeAmazonForWorthit(amazonUrl);
+      const ru = reviewsUrlFromProductUrl(amazonUrl);
+      const mainP = firecrawlScrapeAmazonPage(amazonUrl, true);
+      const reviewsP = ru
+        ? firecrawlScrapeAmazonPage(ru, false).catch(() => ({ markdown: "", quality: -1 }))
+        : Promise.resolve({ markdown: "", quality: -1 });
+
+      const mainRes = await mainP;
+      const { markdown: mainMd, quality } = mainRes;
+      assertUsableAmazonMain(mainMd, quality);
+      const scrapingNote = scrapingNoteForAmazonQuality(quality);
+
+      const titleForResearch = parseTitle(mainMd);
+      const supplementalP = fetchSupplementalResearch(trimmed, titleForResearch);
+
+      const [reviewsRes, supplementalRes] = await Promise.all([reviewsP, supplementalP]);
+
+      let reviewsMd = "";
+      if (reviewsRes.markdown && !amazonMarkdownHardBlocked(reviewsRes.markdown)) {
+        reviewsMd = reviewsRes.markdown;
+      }
+
+      const scraped = buildScrapedAmazonPayload(amazonUrl, mainMd, reviewsMd, scrapingNote);
+
       if (listingProbablyAccessoryMismatch(trimmed, scraped)) {
         errors.push(
           "Liste muhtemelen ana cihaz değil (uyumlu aksesuar / yanıltıcı başlık); sıradaki sonuç deneniyor."
         );
         continue;
       }
-      const { block: supplementalBlock } = await fetchSupplementalResearch(trimmed, scraped);
-      const report = await analyzeWithClaude(trimmed, scraped, supplementalBlock || undefined);
+
+      const report = await analyzeWithClaude(
+        trimmed,
+        scraped,
+        supplementalRes.block || undefined
+      );
       return { amazonUrl, report };
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e));
