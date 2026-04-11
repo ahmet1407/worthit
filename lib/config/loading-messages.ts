@@ -1,11 +1,10 @@
-/** Master prompt v3 ile uyumlu yükleme metinleri (pipeline uzadıkça anlamlı). */
 export const WORTHIT_LOADING_MESSAGES = [
-  "Reddit topluluğu taranıyor...",
-  "Amazon yorumları filtreleniyor...",
-  "Şikayetvar kontrol ediliyor...",
-  "Uzman test sonuçları çekiliyor...",
-  "Kronik sorun desenleri analiz ediliyor...",
-  "Son 90 günün yorumları değerlendiriliyor...",
-  "Sahte yorum sinyalleri kontrol ediliyor...",
-  "Skor hesaplanıyor...",
+  "Ürün bilgileri toplanıyor...",
+  "Binlerce kullanıcı deneyimi inceleniyor...",
+  "Gerçek sahiplerinin şikayetleri aranıyor...",
+  "Uzman testleri ve incelemeler taranıyor...",
+  "Tekrar eden problemler tespit ediliyor...",
+  "Fiyat-performans dengesi hesaplanıyor...",
+  "Sahte yorumlar ayıklanıyor...",
+  "Karar skoru oluşturuluyor...",
 ] as const;
