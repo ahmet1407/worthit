@@ -31,13 +31,19 @@ function coerceVerdict(v: unknown): Verdict {
 
 const AMAZON_URL_RE = /https?:\/\/(?:www\.)?amazon\.(?:com|co\.uk|de|fr|es|it|nl|se|pl|com\.tr|ca|com\.au|in|co\.jp|sg|ae|sa|mx|br)\/(?:[\w-]+\/)?(?:dp|gp\/product)\/([A-Z0-9]{10})/i;
 
-function sortResultsPreferAmazonTr<T extends { url?: string }>(results: T[]): T[] {
+/** amazon.com önce; amazon.com.tr / amazon.co.jp vb. (amazon.com. ile başlayan TLD) sonra */
+function sortResultsPreferAmazonCom<T extends { url?: string }>(results: T[]): T[] {
   return [...results].sort((a, b) => {
-    const sa = a.url?.includes("amazon.com.tr") ? 0 : 1;
-    const sb = b.url?.includes("amazon.com.tr") ? 0 : 1;
-    return sa - sb;
+    const rank = (url?: string) => {
+      if (!url) return 2;
+      if (url.includes("amazon.com/") && !url.includes("amazon.com.")) return 0;
+      return 1;
+    };
+    return rank(a.url) - rank(b.url);
   });
 }
+
+const sortResultsPreferAmazonTr = sortResultsPreferAmazonCom;
 
 export function pickFirstAmazonProductUrl(results: { url?: string }[]): string | null {
   const ordered = sortResultsPreferAmazonTr(results);
@@ -58,7 +64,6 @@ function asinFromProductUrl(u: string): string | null {
 
 function urlsForAsin(asin: string): string[] {
   return [
-    `https://www.amazon.com.tr/dp/${asin}`,
     `https://www.amazon.com/dp/${asin}`,
     `https://www.amazon.co.uk/dp/${asin}`,
     `https://www.amazon.de/dp/${asin}`,
@@ -151,13 +156,18 @@ function urlSlugIsAccessory(url: string): boolean {
   }
 }
 
-/** Aynı ASIN’in farklı ülke mağazalarını koru; yalnızca (asin|host) tekrarını at */
+/** Aynı ASIN’in farklı ülke mağazalarını koru; amazon.com.tr → amazon.com (tek canonical) */
 function dedupeAmazonUrls(urls: string[], userInput?: string): string[] {
   const filterAccessorySlug = userInput && userLikelyWantsMainAppliance(userInput);
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of urls) {
-    const u = raw.split("?")[0];
+    let u = raw.split("?")[0];
+    if (u.includes("amazon.com.tr")) {
+      const trAsin = asinFromProductUrl(u);
+      if (trAsin) u = `https://www.amazon.com/dp/${trAsin}`;
+      else continue;
+    }
     const a = asinFromProductUrl(u);
     if (!a) continue;
     if (filterAccessorySlug && urlSlugIsAccessory(u)) continue;
@@ -362,26 +372,30 @@ function tavilyStrategiesForProduct(simple: string, rawInput: string): Record<st
   const precision: Record<string, unknown>[] = [];
 
   precision.push(
-    { query: `${q} orijinal elektrikli süpürge`, include_domains: ["amazon.com.tr"], max_results: 15 },
-    { query: `${q} kablosuz süpürge`, include_domains: ["amazon.com.tr"], max_results: 15 },
-    { query: `${q} resmi mağaza amazon`, include_domains: ["amazon.com.tr"], max_results: 12 }
+    { query: `${q} orijinal elektrikli süpürge`, include_domains: ["amazon.com"], max_results: 15 },
+    { query: `${q} kablosuz süpürge`, include_domains: ["amazon.com"], max_results: 15 },
+    { query: `${q} resmi mağaza amazon`, include_domains: ["amazon.com"], max_results: 12 }
   );
 
   if (/dyson/i.test(slug) && /v\s*15|v15/i.test(slug)) {
     precision.unshift(
-      { query: "Dyson V15 Detect kablosuz süpürge site:amazon.com.tr", max_results: 12 },
-      { query: "Dyson V15 Absolute Outsize elektrikli süpürge amazon.com.tr", max_results: 12 }
+      { query: "Dyson V15 Detect cordless vacuum site:amazon.com", max_results: 12 },
+      { query: "Dyson V15 Absolute Outsize site:amazon.com", max_results: 12 }
     );
   }
 
   const broad: Record<string, unknown>[] = [
-    { query: q, include_domains: ["amazon.com.tr"] },
-    { query: `${q} alışveriş`, include_domains: ["amazon.com.tr"] },
-    { query: `${q} site:amazon.com.tr` },
-    { query: `${q} site:amazon.com OR site:amazon.com.tr OR site:amazon.co.uk` },
-    { query: simple !== rawInput.trim() ? simple : `${q} amazon`, include_domains: ["amazon.com.tr"] },
-    { query: `${q} amazon dp`, max_results: 15 },
-    { query: `${q} buy amazon`, max_results: 15 },
+    { query: `${q} site:amazon.com`, max_results: 12 },
+    { query: `${q} buy site:amazon.com`, max_results: 10 },
+    { query: `${q} amazon.com dp`, max_results: 10 },
+    { query: q, include_domains: ["amazon.com"], max_results: 12 },
+    { query: `${q} site:amazon.com OR site:amazon.co.uk OR site:amazon.de`, max_results: 12 },
+    { query: simple !== rawInput.trim() ? simple : `${q} amazon`, include_domains: ["amazon.com"], max_results: 12 },
+    { query: `${q} site:trendyol.com`, max_results: 8 },
+    { query: `${q} site:hepsiburada.com`, max_results: 8 },
+    { query: `${q} site:bestbuy.com`, max_results: 6 },
+    { query: `${q} site:walmart.com`, max_results: 6 },
+    { query: `${q} buy review`, max_results: 8 },
   ];
 
   return [...precision, ...broad];
@@ -397,13 +411,17 @@ async function tavilyCollectAmazonUrls(searchPart: string, rawInput: string): Pr
       const u = r.url;
       if (!u || !AMAZON_URL_RE.test(u)) continue;
       if (u.includes("/browse") || u.includes("/stores") || u.includes("/gp/browse")) continue;
-      const clean = u.split("?")[0];
-      const a = asinFromProductUrl(clean);
+      let canonical = u.split("?")[0];
+      if (canonical.includes("amazon.com.tr")) {
+        const trAsin = asinFromProductUrl(canonical);
+        if (trAsin) canonical = `https://www.amazon.com/dp/${trAsin}`;
+      }
+      const a = asinFromProductUrl(canonical);
       if (!a) continue;
-      if (userLikelyWantsMainAppliance(rawInput) && urlSlugIsAccessory(clean)) continue;
+      if (userLikelyWantsMainAppliance(rawInput) && urlSlugIsAccessory(canonical)) continue;
       const sc = scoreTavilyHitForQuery(rawInput.trim() || searchPart, r);
       const prev = best.get(a);
-      if (!prev || sc > prev.score) best.set(a, { url: clean, score: sc });
+      if (!prev || sc > prev.score) best.set(a, { url: canonical, score: sc });
     }
   }
 
@@ -810,17 +828,8 @@ async function firecrawlScrapeAmazonPage(url: string, thorough: boolean): Promis
     return { markdown: md, quality: scoreAmazonMarkdownQuality(md) };
   }
 
-  const tr = url.includes("amazon.com.tr");
   const attempts: Record<string, unknown>[] = [];
 
-  if (tr) {
-    attempts.push({
-      url,
-      onlyMainContent: false,
-      waitFor: 5500,
-      headers: { "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7" },
-    });
-  }
   attempts.push({ url, onlyMainContent: false, waitFor: thorough ? 5000 : 4000 });
   attempts.push({ url, onlyMainContent: true, waitFor: thorough ? 4500 : 3500 });
   attempts.push({
