@@ -11,33 +11,42 @@ export function verdictConfig(verdict: Verdict) {
     case "BUY":
       return {
         label: "AL",
-        emoji: "🟢",
-        color: "#c8f135",
-        bg: "bg-[#c8f135]/12",
-        border: "border-[#c8f135]/30",
-        text: "text-[#c8f135]",
-        glow: "shadow-[0_0_80px_rgba(200,241,53,0.12)]",
+        labelLong: "ALINIR",
+        emoji: "✓",
+        color: "#16a34a",
+        colorLight: "#4ade80",
+        bg: "bg-green-50",
+        border: "border-green-200",
+        text: "text-green-700",
+        accentBar: "linear-gradient(90deg,#16a34a,#4ade80)",
+        glow: "shadow-[0_8px_32px_rgba(22,163,74,0.12)]",
       };
     case "SKIP":
       return {
         label: "ALMA",
-        emoji: "🔴",
-        color: "#ff6b6b",
-        bg: "bg-[#ff6b6b]/12",
-        border: "border-[#ff6b6b]/30",
-        text: "text-[#ff6b6b]",
-        glow: "shadow-[0_0_80px_rgba(255,107,107,0.12)]",
+        labelLong: "ALINMAZ",
+        emoji: "✕",
+        color: "#C0281A",
+        colorLight: "#f87171",
+        bg: "bg-red-50",
+        border: "border-red-200",
+        text: "text-red-700",
+        accentBar: "linear-gradient(90deg,#C0281A,#f87171)",
+        glow: "shadow-[0_8px_32px_rgba(192,40,26,0.10)]",
       };
     case "WAIT":
     default:
       return {
         label: "BEKLE",
-        emoji: "🟡",
-        color: "#ffd93d",
-        bg: "bg-[#ffd93d]/12",
-        border: "border-[#ffd93d]/30",
-        text: "text-[#ffd93d]",
-        glow: "shadow-[0_0_80px_rgba(255,217,61,0.12)]",
+        labelLong: "BEKLE",
+        emoji: "⚡",
+        color: "#C05A1A",
+        colorLight: "#fb923c",
+        bg: "bg-orange-50",
+        border: "border-orange-200",
+        text: "text-orange-700",
+        accentBar: "linear-gradient(90deg,#C05A1A,#fb923c)",
+        glow: "shadow-[0_8px_32px_rgba(192,90,26,0.10)]",
       };
   }
 }

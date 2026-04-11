@@ -33,8 +33,8 @@ export function useWorthitSearch() {
     };
   }, [loading]);
 
-  const submit = useCallback(async () => {
-    const q = query.trim();
+  const submit = useCallback(async (productOverride?: string) => {
+    const q = (productOverride ?? query).trim();
     if (!q || loading) return;
     setError(null);
     setResult(null);

@@ -3,14 +3,30 @@
 @tailwind utilities;
 
 :root {
-  --foreground: #ffffff;
-  --background: #0a0a0a;
+  --ink: #0d0d0d;
+  --ink-mid: #4a4a4a;
+  --ink-soft: #9a9a9a;
+  --surface: #fafaf8;
+  --surface-2: #f3f3f0;
+  --border: #e8e8e4;
+  --lime: #4a8c1c;
+  --lime-bg: #f0fae4;
+  --orange: #c05a1a;
+  --orange-bg: #fef6f0;
+  --red: #c0281a;
+  --red-bg: #fef2f0;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
+  font-family: var(--font-dm-sans), system-ui, sans-serif;
+  background: var(--surface);
+  color: var(--ink);
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+.font-serif {
+  font-family: var(--font-serif), Georgia, serif;
 }
 
 @keyframes ticker {
@@ -22,42 +38,57 @@ body {
   }
 }
 .ticker-track {
-  animation: ticker 28s linear infinite;
+  animation: ticker 32s linear infinite;
 }
 .ticker-track:hover {
   animation-play-state: paused;
 }
 
-@keyframes pulse-glow {
+@keyframes pulse-dot {
   0%,
   100% {
-    opacity: 0.5;
-  }
-  50% {
     opacity: 1;
   }
+  50% {
+    opacity: 0.4;
+  }
 }
-.pulse-glow {
-  animation: pulse-glow 2s ease-in-out infinite;
+.pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
 }
 
 @keyframes fade-up {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(18px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
+.anim-1 {
+  animation: fade-up 0.6s 0.05s both;
+}
+.anim-2 {
+  animation: fade-up 0.6s 0.15s both;
+}
+.anim-3 {
+  animation: fade-up 0.6s 0.25s both;
+}
+.anim-4 {
+  animation: fade-up 0.6s 0.35s both;
+}
+.anim-5 {
+  animation: fade-up 0.6s 0.45s both;
+}
 .fade-up {
-  animation: fade-up 0.45s ease forwards;
+  animation: fade-up 0.5s ease both;
 }
 
 @keyframes pop {
   0% {
-    transform: scale(0.9);
+    transform: scale(0.88);
     opacity: 0;
   }
   65% {
@@ -79,6 +110,18 @@ body {
 }
 .spin-slow {
   animation: spin-slow 1.4s linear infinite;
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s ease;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 @media (prefers-reduced-motion: reduce) {

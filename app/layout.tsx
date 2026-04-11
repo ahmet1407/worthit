@@ -1,24 +1,41 @@
 import type { Metadata, Viewport } from "next";
-import { DM_Sans } from "next/font/google";
+import { DM_Sans, Instrument_Serif } from "next/font/google";
 import "./globals.css";
 
-const dmSans = DM_Sans({ subsets: ["latin", "latin-ext"], display: "swap", variable: "--font-dm-sans" });
+const dmSans = DM_Sans({
+  subsets: ["latin", "latin-ext"],
+  display: "swap",
+  variable: "--font-dm-sans",
+  weight: ["300", "400", "500", "700"],
+});
+
+const instrumentSerif = Instrument_Serif({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-serif",
+  weight: "400",
+  style: ["normal", "italic"],
+});
 
 export const metadata: Metadata = {
   title: "Worthit — Al mı alma mı?",
   description: "Ürün adını yaz, yapay zeka ile saniyeler içinde al/alma kararını al.",
   openGraph: {
     title: "Worthit — Al mı alma mı?",
-    description: "Ürün adını yaz, yapay zeka ile saniyeler içinde al/alma kararını al.",
+    description: "500 yorumu saniyeler içinde analiz et, net karar al.",
   },
 };
 
-export const viewport: Viewport = { themeColor: "#0a0a0a", width: "device-width", initialScale: 1 };
+export const viewport: Viewport = {
+  themeColor: "#FAFAF8",
+  width: "device-width",
+  initialScale: 1,
+};
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="tr" className={dmSans.variable}>
-      <body className={`min-h-screen font-sans antialiased ${dmSans.className}`}>{children}</body>
+    <html lang="tr" className={`${dmSans.variable} ${instrumentSerif.variable}`}>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }
