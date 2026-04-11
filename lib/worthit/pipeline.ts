@@ -206,28 +206,55 @@ function tavilyStrategiesForProduct(simple: string, rawInput: string): Record<st
   return [...precision, ...broad];
 }
 
+const TAVILY_AMAZON_BATCH = 5;
+
 async function tavilyCollectAmazonUrls(searchPart: string, rawInput: string): Promise<string[]> {
   const strategies = tavilyStrategiesForProduct(searchPart, rawInput);
   /** ASIN → en iyi skorlu URL */
   const best = new Map<string, { url: string; score: number }>();
 
-  for (const strat of strategies) {
-    try {
-      const data = await tavilySearchBody(strat);
-      for (const r of sortResultsPreferAmazonTr(data.results ?? [])) {
-        const u = r.url;
-        if (!u || !AMAZON_URL_RE.test(u)) continue;
-        if (u.includes("/browse") || u.includes("/stores") || u.includes("/gp/browse")) continue;
-        const clean = u.split("?")[0];
-        const a = asinFromProductUrl(clean);
-        if (!a) continue;
-        const sc = scoreTavilyHitForQuery(rawInput.trim() || searchPart, r);
-        const prev = best.get(a);
-        if (!prev || sc > prev.score) best.set(a, { url: clean, score: sc });
+  function ingestResults(data: { results?: TavilyHit[] }) {
+    for (const r of sortResultsPreferAmazonTr(data.results ?? [])) {
+      const u = r.url;
+      if (!u || !AMAZON_URL_RE.test(u)) continue;
+      if (u.includes("/browse") || u.includes("/stores") || u.includes("/gp/browse")) continue;
+      const clean = u.split("?")[0];
+      const a = asinFromProductUrl(clean);
+      if (!a) continue;
+      const sc = scoreTavilyHitForQuery(rawInput.trim() || searchPart, r);
+      const prev = best.get(a);
+      if (!prev || sc > prev.score) best.set(a, { url: clean, score: sc });
+    }
+  }
+
+  /** Önce basic + paralel partiler — duvar saati süresini kısaltır */
+  for (let i = 0; i < strategies.length; i += TAVILY_AMAZON_BATCH) {
+    const batch = strategies.slice(i, i + TAVILY_AMAZON_BATCH);
+    const settled = await Promise.allSettled(
+      batch.map((strat) => {
+        const maxRes = typeof strat.max_results === "number" ? strat.max_results : 12;
+        return tavilySearchBody({
+          ...strat,
+          search_depth: "basic",
+          max_results: Math.min(15, maxRes),
+        });
+      })
+    );
+    for (const r of settled) {
+      if (r.status === "fulfilled") ingestResults(r.value);
+    }
+    if (best.size >= 8) break;
+  }
+
+  /** Hiç ASIN yoksa veya çok az ise advanced ile ilk stratejileri dene */
+  if (best.size < 2) {
+    for (const strat of strategies.slice(0, 4)) {
+      try {
+        ingestResults(await tavilySearchBody(strat));
+        if (best.size >= 2) break;
+      } catch {
+        /* */
       }
-      if (best.size >= 8) break;
-    } catch {
-      /* sonraki strateji */
     }
   }
 
@@ -288,7 +315,7 @@ function isAmazonUrl(u: string): boolean {
 
 /**
  * Tavily: Amazon dışı kısa pasajlar (paralel). Başarısız sorgular sessizce yutulur.
- * Güven ve kronik sorun için ek bağlam; istek başına ~4–5 Tavily çağrısı.
+ * Güven ve kronik sorun için ek bağlam; 6 Tavily sorgusu paralel (basic depth).
  */
 async function fetchSupplementalResearch(
   userQuery: string,
@@ -302,21 +329,28 @@ async function fetchSupplementalResearch(
   const strategies: Record<string, unknown>[] = [
     { query: `${anchor} sorun şikayet`, include_domains: ["sikayetvar.com"], max_results: 6 },
     { query: `${anchor} kullanıcı deneyimi sorun`, include_domains: ["sikayetvar.com"], max_results: 4 },
-    { query: `${anchor} problems OR issues OR long term owner reddit`, max_results: 6 },
+    { query: `${anchor} problems OR issues OR long term owner reddit`, max_results: 8 },
+    { query: `${anchor} site:reddit.com review OR worth it OR regret`, max_results: 8 },
+    { query: `${anchor} fake reviews OR scam OR "waste of money"`, max_results: 6 },
     {
       query: `${anchor} review lab test site:rtings.com OR site:notebookcheck.net OR site:vacuumwars.com OR site:which.co.uk`,
-      max_results: 5,
+      max_results: 6,
     },
     {
       query: `${anchor} sorun tavsiye site:technopat.net OR site:donanimhaber.com`,
-      max_results: 5,
+      max_results: 6,
     },
   ];
 
   const settled = await Promise.allSettled(
     strategies.map(async (body) => {
       try {
-        return await tavilySearchBody(body);
+        const maxRes = typeof body.max_results === "number" ? body.max_results : 8;
+        return await tavilySearchBody({
+          ...body,
+          search_depth: "basic",
+          max_results: Math.min(10, maxRes),
+        });
       } catch {
         return { results: [] as TavilyHit[] };
       }
@@ -343,8 +377,8 @@ async function fetchSupplementalResearch(
   const chunks: string[] = [];
   const urls: string[] = [];
   let used = 0;
-  const maxTotal = 5200;
-  const maxSnip = 420;
+  const maxTotal = 8000;
+  const maxSnip = 480;
 
   for (const { hit } of tagged) {
     const u = hit.url!;
@@ -361,7 +395,7 @@ async function fetchSupplementalResearch(
     chunks.push(piece);
     urls.push(u);
     used += piece.length;
-    if (chunks.length >= 12) break;
+    if (chunks.length >= 18) break;
   }
 
   if (chunks.length === 0) return { block: "", urls: [] };
@@ -466,7 +500,7 @@ async function firecrawlFetchMarkdown(key: string, payload: Record<string, unkno
     },
     body: JSON.stringify({
       formats: ["markdown"],
-      timeout: 120000,
+      timeout: 90000,
       ...payload,
     }),
   });
@@ -505,43 +539,51 @@ async function firecrawlScrapeAmazonPage(url: string, thorough: boolean): Promis
     attempts.push({
       url,
       onlyMainContent: false,
-      waitFor: 8000,
+      waitFor: 5500,
       headers: { "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7" },
     });
   }
-  attempts.push({ url, onlyMainContent: false, waitFor: thorough ? 7000 : 5000 });
-  attempts.push({ url, onlyMainContent: true, waitFor: thorough ? 6500 : 4500 });
+  attempts.push({ url, onlyMainContent: false, waitFor: thorough ? 5000 : 4000 });
+  attempts.push({ url, onlyMainContent: true, waitFor: thorough ? 4500 : 3500 });
   attempts.push({
     url,
     onlyMainContent: false,
-    waitFor: 5000,
+    waitFor: 4000,
     mobile: true,
   });
   attempts.push({
     url,
     onlyMainContent: true,
-    waitFor: 4500,
+    waitFor: 3500,
     mobile: true,
   });
 
+  const settled = await Promise.allSettled(
+    attempts.map((extra) => firecrawlFetchMarkdown(key, extra))
+  );
+
   let best = "";
   let bestQ = -999;
-  for (const extra of attempts) {
-    try {
-      const md = await firecrawlFetchMarkdown(key, extra);
-      const q = scoreAmazonMarkdownQuality(md);
-      if (q > bestQ || (q === bestQ && md.length > best.length)) {
-        bestQ = q;
-        best = md;
-      }
-      if (q >= 38 && !amazonMarkdownHardBlocked(md)) {
-        return { markdown: md, quality: q };
-      }
-    } catch {
-      /* deneme */
+  let bestUnblockedQ = -999;
+  let bestUnblocked = "";
+
+  for (const r of settled) {
+    if (r.status !== "fulfilled") continue;
+    const md = r.value;
+    const q = scoreAmazonMarkdownQuality(md);
+    if (q > bestQ || (q === bestQ && md.length > best.length)) {
+      bestQ = q;
+      best = md;
+    }
+    if (!amazonMarkdownHardBlocked(md) && (q > bestUnblockedQ || (q === bestUnblockedQ && md.length > bestUnblocked.length))) {
+      bestUnblockedQ = q;
+      bestUnblocked = md;
     }
   }
 
+  if (bestUnblockedQ >= 38 && bestUnblocked.trim()) {
+    return { markdown: bestUnblocked, quality: bestUnblockedQ };
+  }
   if (!best.trim()) throw new Error("Firecrawl bu URL için içerik döndürmedi.");
   return { markdown: best, quality: bestQ };
 }
@@ -635,7 +677,16 @@ function reviewsUrlFromProductUrl(productUrl: string): string | null {
 }
 
 export async function scrapeAmazonForWorthit(productUrl: string): Promise<ScrapedAmazonPayload> {
-  const { markdown: mainMd, quality } = await firecrawlScrapeAmazonPage(productUrl, true);
+  const ru = reviewsUrlFromProductUrl(productUrl);
+
+  const [mainRes, reviewsRes] = await Promise.all([
+    firecrawlScrapeAmazonPage(productUrl, true),
+    ru
+      ? firecrawlScrapeAmazonPage(ru, false).catch(() => ({ markdown: "", quality: -1 }))
+      : Promise.resolve({ markdown: "", quality: -1 }),
+  ]);
+
+  const { markdown: mainMd, quality } = mainRes;
 
   if (amazonMarkdownHardBlocked(mainMd)) {
     throw new Error("Bu Amazon URL’si bot koruması veya boş yanıt döndürdü.");
@@ -654,14 +705,8 @@ export async function scrapeAmazonForWorthit(productUrl: string): Promise<Scrape
   }
 
   let reviewsMd = "";
-  const ru = reviewsUrlFromProductUrl(productUrl);
-  if (ru) {
-    try {
-      const { markdown } = await firecrawlScrapeAmazonPage(ru, false);
-      if (!amazonMarkdownHardBlocked(markdown)) reviewsMd = markdown;
-    } catch {
-      reviewsMd = "";
-    }
+  if (reviewsRes.markdown && !amazonMarkdownHardBlocked(reviewsRes.markdown)) {
+    reviewsMd = reviewsRes.markdown;
   }
 
   const combined = `${mainMd}\n\n---\n\n## Düşük puanlı yorumlar sayfası\n\n${reviewsMd}`;
