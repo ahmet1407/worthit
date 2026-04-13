@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { WORTHIT_SYSTEM_PROMPT } from "./system-prompt";
+import { fetchFlashSupplemental } from "./flash-supplement";
 import { shortCacheGet, shortCacheKey, shortCacheSet } from "./short-cache";
 import type { ScrapedAmazonPayload, Verdict, WorthitReport } from "./types";
 
@@ -529,22 +530,29 @@ function isAmazonUrl(u: string): boolean {
   }
 }
 
-/**
- * Tavily: Amazon dışı kısa pasajlar (paralel). Başarısız sorgular sessizce yutulur.
- * Zayıf ilk dalgada ikinci dalga (adaptive). TTL önbellek (aynı anchor).
- */
-async function fetchSupplementalResearch(
-  userQuery: string,
-  amazonTitle: string
-): Promise<{ block: string; urls: string[] }> {
-  if (!process.env.TAVILY_API_KEY) return { block: "", urls: [] };
+function mergeFlashTavilySupplemental(
+  flash: { block: string; urls: string[] },
+  tavily: { block: string; urls: string[] }
+): { block: string; urls: string[] } {
+  const parts: string[] = [];
+  if (flash.block.trim()) parts.push(flash.block.trim());
+  if (tavily.block.trim()) parts.push(tavily.block.trim());
+  return {
+    block: parts.join("\n\n---\n\n"),
+    urls: [...flash.urls, ...tavily.urls],
+  };
+}
 
-  const anchor = shortenResearchAnchor(userQuery, amazonTitle);
+/**
+ * Tavily: Amazon dışı kısa pasajlar (paralel). Ayrı TTL önbellek (anchor).
+ */
+async function runTavilySupplementalResearch(anchor: string): Promise<{ block: string; urls: string[] }> {
+  if (!process.env.TAVILY_API_KEY) return { block: "", urls: [] };
   if (anchor.length < 3) return { block: "", urls: [] };
 
-  const ck = shortCacheKey("worthit_supp", anchor);
-  const cached = shortCacheGet<{ block: string; urls: string[] }>(ck);
-  if (cached) return cached;
+  const ckT = shortCacheKey("worthit_supp_tavily", anchor);
+  const cachedT = shortCacheGet<{ block: string; urls: string[] }>(ckT);
+  if (cachedT) return cachedT;
 
   type Tagged = { hit: TavilyHit; qIndex: number };
 
@@ -685,15 +693,53 @@ async function fetchSupplementalResearch(
 
   if (chunks.length === 0) {
     const empty = { block: "", urls: [] };
-    shortCacheSet(ck, empty);
+    shortCacheSet(ckT, empty);
     return empty;
   }
 
   const block =
     `(${chunks.length} sayfa özeti, yalnızca aşağıdaki metne dayan)\n\n` + chunks.join("");
   const result = { block, urls };
-  shortCacheSet(ck, result);
+  shortCacheSet(ckT, result);
   return result;
+}
+
+/**
+ * Flash.co (Supabase / JSONL) + Tavily birleşik supplemental. Önbellek tek anahtar.
+ * WORTHIT_SKIP_TAVILY_ON_FLASH=1 ve güvenli Flash eşleşmesinde Tavily atlanabilir.
+ */
+async function fetchSupplementalResearch(
+  userQuery: string,
+  amazonTitle: string
+): Promise<{ block: string; urls: string[] }> {
+  const anchor = shortenResearchAnchor(userQuery, amazonTitle);
+  if (anchor.length < 3) return { block: "", urls: [] };
+
+  const ck = shortCacheKey("worthit_supp", anchor);
+  const cached = shortCacheGet<{ block: string; urls: string[] }>(ck);
+  if (cached) return cached;
+
+  const flash = await fetchFlashSupplemental(userQuery, amazonTitle);
+
+  const minConf = Number(process.env.WORTHIT_FLASH_MIN_CONFIDENCE ?? "0.42");
+  const skipTavily =
+    /^1$|^true$/i.test(process.env.WORTHIT_SKIP_TAVILY_ON_FLASH ?? "") &&
+    flash.confidence >= minConf &&
+    flash.block.trim().length > 80;
+
+  if (flash.block.trim()) {
+    pipelineLog("flash_supplement", 0, {
+      confidence: Math.round(flash.confidence * 1000) / 1000,
+      flash_urls: flash.urls.length,
+      skip_tavily: skipTavily,
+    });
+  }
+
+  const tavily = skipTavily ? { block: "", urls: [] as string[] } : await runTavilySupplementalResearch(anchor);
+
+  const merged = mergeFlashTavilySupplemental(flash, tavily);
+  shortCacheSet(ck, merged);
+  return merged;
 }
 
 /** Tavily + yapıştırılan URL/ASIN + bölge varyantları — sırayla dene */
