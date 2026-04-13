@@ -1,0 +1,29 @@
+Flash.co → Worthit (Supabase) kurulum sırası
+============================================
+
+1) Supabase’te migration çalıştır
+   Dosya: supabase/migrations/20260413140000_flash_products.sql
+   (Dashboard → SQL → yapıştır → Run) veya: supabase db push
+
+2) (İsteğe bağlı) JSONL üret — flash.co ToS’una uy
+   pip install httpx beautifulsoup4
+   python scripts/flash_crawler.py --start 1 --end 500 --concurrency 5 -o flash_products.jsonl
+
+3) JSONL’i Supabase’e yükle
+   export SUPABASE_URL="https://xxxx.supabase.co"
+   export SUPABASE_SERVICE_ROLE_KEY="eyJ..."
+   npm run import-flash -- ./flash_products.jsonl
+   # veya: FLASH_PRODUCTS_JSONL=./flash_products.jsonl npm run import-flash
+
+4) Vercel / .env.local — API için
+   SUPABASE_URL=
+   SUPABASE_SERVICE_ROLE_KEY=   (yalnızca sunucu; asla client’a verme)
+
+   Yerel JSONL ile denemek için (Supabase yoksa):
+   FLASH_PRODUCTS_JSONL=/mutlak/yol/flash_products.jsonl
+
+5) Tavily tasarrufu (isteğe bağlı)
+   WORTHIT_SKIP_TAVILY_ON_FLASH=1
+   WORTHIT_FLASH_MIN_CONFIDENCE=0.42
+
+Kontrol: Supabase Table Editor’da flash_products satır sayısı.

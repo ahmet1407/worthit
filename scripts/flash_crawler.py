@@ -9,6 +9,9 @@ araştırma / kendi riskiniz için; üretimde resmi API veya izin tercih edin.
 Örnek (küçük test):
   pip install httpx beautifulsoup4
   python scripts/flash_crawler.py --start 75700 --end 75720 --concurrency 5
+
+Sonra Supabase’e yüklemek için scripts/FLASH_SETUP.txt ve:
+  SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run import-flash -- ./flash_products.jsonl
 """
 
 from __future__ import annotations

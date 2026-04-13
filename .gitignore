@@ -31,3 +31,6 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# Flash crawl çıktısı (büyük dosya)
+flash_products.jsonl
