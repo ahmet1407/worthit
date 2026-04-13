@@ -147,10 +147,20 @@ async def crawl(
     base_url: str,
 ) -> None:
     sem = asyncio.Semaphore(max(1, concurrency))
+    # flash.co boş/script UA’lara 403 veriyor; gerçek tarayıcı dizesi gerekli
     headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; WorthitResearch/1.0; +https://github.com/ahmet1407/worthit)",
-        "Accept": "text/html,application/xhtml+xml",
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "no-cache",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
     }
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
